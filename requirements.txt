@@ -1,0 +1,22 @@
+# Medical Image Anonymization Pipeline - Python Dependencies
+
+# Core Scientific Computing
+numpy>=1.17,<2.0  # CRITICAL: EasyOCR requires numpy<2.0
+
+# Image Processing
+opencv-python>=4.5.0
+Pillow>=9.0.0
+
+# Medical Imaging
+pydicom>=2.3.0
+
+# OCR Engines
+paddleocr>=2.6.0
+easyocr>=1.6.0
+
+# Deep Learning & AI
+torch>=2.0.0
+transformers>=5.2.0
+
+# Utilities
+scikit-learn>=1.0.0

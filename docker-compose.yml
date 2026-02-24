@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  anonymizer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: medical-anonymizer:latest
+    container_name: medical-anonymizer
+    
+    # Volume mounts for input/output
+    volumes:
+      - ./input:/app/input
+      - ./output:/app/output
+      # Optional: Mount models cache to avoid re-downloading
+      - ./models_cache:/root/.cache
+    
+    # Environment variables (already set in Dockerfile, but can override here)
+    environment:
+      - FLAGS_use_mkldnn=0
+      - FLAGS_use_pir_api=0
+      - PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True
+      - KMP_DUPLICATE_LIB_OK=TRUE
+      - PYTHONUNBUFFERED=1
+    
+    # Resource limits (optional, adjust based on your needs)
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: '4'
+    #       memory: 8G
+    
+    # Keep container running for interactive use (optional)
+    # stdin_open: true
+    # tty: true

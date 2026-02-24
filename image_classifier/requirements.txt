@@ -1,0 +1,45 @@
+# Medical Image Anonymization API - Requirements
+# Smart dependency management: only install what's needed
+
+# === CORE DEPENDENCIES (Always Required) ===
+numpy>=1.21.0
+opencv-python>=4.5.0
+pydicom>=2.3.0
+pillow>=9.0.0
+
+# === API FRAMEWORK (New - Required) ===
+fastapi>=0.100.0
+uvicorn[standard]>=0.23.0
+python-multipart>=0.0.6
+
+# === OCR ENGINE (Primary) ===
+# PaddleOCR - Only if not already installed
+# Note: PaddlePaddle should be installed separately via:
+#   pip install paddlepaddle
+#   pip install paddleocr
+
+# === OPTIONAL ENHANCEMENTS ===
+# LaMa Inpainting (Optional - better quality, but heavy)
+# simple-lama-inpainting>=0.1.0
+
+# === MONITORING & LOGGING ===
+# For production monitoring
+# prometheus-client>=0.17.0
+
+# === TESTING (Development) ===
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
+httpx>=0.24.0
+
+# === NOTES ===
+# If you already have these installed, this file is safe to use:
+# - numpy: Will use existing if >=1.21.0
+# - opencv-python: Will use existing if >=4.5.0  
+# - pydicom: Will use existing if >=2.3.0
+# - paddleocr/paddlepaddle: Kept as-is if present
+#
+# Install command:
+#   pip install -r requirements.txt
+#
+# For minimal install (skip testing):
+#   pip install fastapi uvicorn python-multipart

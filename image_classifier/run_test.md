@@ -1,0 +1,1 @@
+ python medical_anonymizer/evaluate_accuracy.py --dataset dataset
