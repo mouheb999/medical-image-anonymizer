@@ -44,7 +44,7 @@ import numpy as np
 # Add current directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent))
 
-from medical_anonymizer.improved_medical_classifier import MedicalImageClassifier
+from image_classifier.improved_medical_classifier import MedicalImageClassifier
 from anonymizer import ImageValidator, ImageValidationError, MetadataAnonymizer, PixelRedactor
 from ocr import TextDetector, BorderPreprocessor, EasyTextDetector
 
@@ -244,26 +244,39 @@ Examples:
     redacted_count = 0
     skipped_count = 0
     tags_anonymized = 0
+
+  # =====================================================================
+    # STAGE 1: CLASSIFICATION
+    # =====================================================================
+    logger.info("STAGE 1: Classification")
     
+    classifier = MedicalImageClassifier()
+    category, confidence, metadata = classifier.classify_image(str(input_path))
+    
+    category_lower = category.lower()
+    
+    if (category == "non_medical" or 
+        "non" in category_lower or 
+        "not medical" in category_lower or
+        "non-medical" in category_lower):
+        print(f"\n✗ Non-medical image detected: {category} (confidence: {confidence:.2f})")
+        print("  Pipeline terminated — no anonymization performed.")
+        sys.exit(1)
+    
+    if (category == "other_medical" or
+        "rejected" in category_lower or
+        "other medical" in category_lower or
+        "another body" in category_lower or
+        "not supported" in category_lower):
+        print(f"\n✗ Image type not supported for automatic anonymization: {category}")
+        print(f"  Confidence: {confidence:.2f}")
+        print("  Pipeline terminated — manual review required.")
+        sys.exit(1)
+    
+    print(f"✓ Classification: {category} (confidence: {confidence:.2f})")
+    logger.info(f"Category: {category}, Confidence: {confidence:.2f}")
+    print(f"✓ Classification: {category} (confidence: {confidence:.2f})")
     try:
-        # =====================================================================
-        # STAGE 1: CLASSIFICATION
-        # =====================================================================
-        logger.info("=" * 60)
-        logger.info("STAGE 1: Classification")
-        logger.info("=" * 60)
-        
-        classifier = MedicalImageClassifier()
-        category, confidence, metadata = classifier.classify_image(str(input_path))
-        
-        if category == "non_medical":
-            print(f"✗ Error: Image classified as non-medical (confidence: {confidence:.2f})")
-            print("  This pipeline only processes medical images.")
-            return 1
-        
-        print(f"✓ Classification: {category} (confidence: {confidence:.2f})")
-        logger.info(f"Category: {category}, Confidence: {confidence:.2f}")
-        
         # =====================================================================
         # STAGE 2: VALIDATION
         # =====================================================================
@@ -366,13 +379,15 @@ Examples:
             if is_dicom:
                 redacted_data, redacted_count = redactor.redact(
                     dataset, merged_regions,
-                    padding=args.padding, border_margin=args.margin
+                    padding=args.padding, border_margin=args.margin,
+                    redact_all_regions=True
                 )
                 dataset = redacted_data
             else:
                 redacted_data, redacted_count = redactor.redact(
                     pixel_array, merged_regions,
-                    padding=args.padding, border_margin=args.margin
+                    padding=args.padding, border_margin=args.margin,
+                    redact_all_regions=True
                 )
                 pixel_array = redacted_data
         else:

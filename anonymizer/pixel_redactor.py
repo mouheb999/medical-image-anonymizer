@@ -8,7 +8,7 @@ region of medical images.
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import cv2
 import numpy as np
@@ -58,11 +58,12 @@ class PixelRedactor:
     
     def redact(
         self,
-        image_data: "pydicom.Dataset | np.ndarray",
-        regions: list[np.ndarray],
+        image_data: Any,
+        regions: list,
         padding: int | None = None,
-        border_margin: int | None = None
-    ) -> tuple["pydicom.Dataset | np.ndarray", int]:
+        border_margin: int | None = None,
+        redact_all_regions: bool = True
+    ) -> tuple[Any, int]:
         """Redact text regions using inpainting for natural background blending.
         
         Implements safe redaction with the following rules:
@@ -82,6 +83,8 @@ class PixelRedactor:
                      containing polygon corner coordinates [x, y]
             padding: Override default padding (uses self.padding if None)
             border_margin: Override default border margin
+            redact_all_regions: If True (default), redact ALL regions including
+                              central ones. If False, skip central regions for safety.
             
         Returns:
             A tuple containing:
@@ -171,8 +174,8 @@ class PixelRedactor:
             
             is_in_safe_zone = is_near_left or is_near_right or is_near_top or is_near_bottom
             
-            if not is_in_safe_zone:
-                # Region is in central area - skip with warning
+            if not is_in_safe_zone and not redact_all_regions:
+                # Region is in central area and protection is enabled - skip with warning
                 logger.warning(
                     f"Region {i+1}: SKIPPED (central area) | "
                     f"Center: ({center_x}, {center_y}) | "
