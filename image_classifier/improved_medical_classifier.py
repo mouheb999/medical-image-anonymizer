@@ -210,8 +210,12 @@ class MedicalImageClassifier:
         
         if image_path.suffix.lower() == ".dcm":
             # Load DICOM
+            import sys
+            sys.path.insert(0, str(image_path.parent.parent))
+            from anonymizer.dicom_decompressor import decompress_dicom
+            
             dicom = pydicom.dcmread(str(image_path))
-            pixel_array = dicom.pixel_array.astype(np.float32)
+            pixel_array = decompress_dicom(dicom).astype(np.float32)
             
             # Handle photometric interpretation (inverted images)
             photometric = getattr(dicom, 'PhotometricInterpretation', 'MONOCHROME2')

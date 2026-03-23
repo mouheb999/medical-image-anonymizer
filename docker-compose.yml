@@ -47,5 +47,40 @@ services:
     volumes:
       - minio_data:/data
 
+  mongodb:
+    image: mongo:7
+    container_name: mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+
+  backend:
+    build: ./backend
+    container_name: backend
+    ports:
+      - "5000:5000"
+    environment:
+      - MONGODB_URI=mongodb://mongodb:27017/medical_anonymizer
+      - FASTAPI_URL=http://anonymizer:8000
+      - JWT_SECRET=change_this_in_production
+      - JWT_EXPIRE=7d
+      - NODE_ENV=production
+    depends_on:
+      - mongodb
+      - anonymizer
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+
+  client:
+    build: ./client
+    container_name: client
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
 volumes:
   minio_data:
+  mongodb_data:

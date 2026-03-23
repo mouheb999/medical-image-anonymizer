@@ -252,18 +252,41 @@ async def anonymize_image(file: UploadFile = File(...)):
         # Safe pixel extraction for DICOM with compression handling
         print(f"[DEBUG] Extracting pixel array...")
         if is_dicom:
+            from anonymizer.dicom_decompressor import decompress_dicom
             try:
-                pixel_array = dataset.pixel_array.copy()
+                pixel_array = decompress_dicom(dataset)
             except Exception as e:
                 raise ValueError(
                     f"Cannot read DICOM pixel data: {e}. "
                     f"Install missing codecs: "
-                    f"pip install pylibjpeg pylibjpeg-libjpeg"
+                    f"pip install python-gdcm"
                 )
         else:
             pixel_array = validation_result.pixel_array
         
         print(f"[DEBUG] Pixel array: {pixel_array.shape if pixel_array is not None else 'None'}")
+        
+        # Generate original preview for DICOM (before any processing)
+        original_preview_filename = None
+        if is_dicom:
+            try:
+                from anonymizer.dicom_decompressor import normalize_to_uint8
+                
+                orig_preview_uint8 = normalize_to_uint8(pixel_array)
+                
+                if len(orig_preview_uint8.shape) == 2:
+                    orig_preview_image = Image.fromarray(orig_preview_uint8, mode='L')
+                else:
+                    orig_preview_image = Image.fromarray(orig_preview_uint8)
+                
+                original_preview_filename = f"original_preview_{file.filename.replace('.dcm', '').replace('.dicom', '')}.png"
+                orig_preview_path = OUTPUT_DIR / original_preview_filename
+                orig_preview_image.save(str(orig_preview_path))
+                
+                logger.info(f"Original DICOM preview saved: {orig_preview_path}")
+            except Exception as e:
+                logger.warning(f"Original preview generation failed (non-fatal): {e}")
+                original_preview_filename = None
         
         image_format = "DICOM" if is_dicom else Path(file.filename).suffix.upper().replace('.', '')
         logger.info(f"Format: {image_format}")
@@ -383,9 +406,33 @@ async def anonymize_image(file: UploadFile = File(...)):
         
         output_filename = f"anonymized_{file.filename}"
         output_path = OUTPUT_DIR / output_filename
+        preview_filename = None  # Initialize for non-DICOM files
         ###### For DICOM, save the modified dataset. For images, save the redacted pixel array.
         if is_dicom:
             pydicom.dcmwrite(str(output_path), dataset)
+            
+            # Generate PNG preview for DICOM
+            try:
+                from anonymizer.dicom_decompressor import (
+                    decompress_dicom, normalize_to_uint8
+                )
+                
+                preview_pixels = decompress_dicom(dataset)
+                preview_uint8 = normalize_to_uint8(preview_pixels)
+                
+                if len(preview_uint8.shape) == 2:
+                    preview_image = Image.fromarray(preview_uint8, mode='L')
+                else:
+                    preview_image = Image.fromarray(preview_uint8)
+                
+                preview_filename = output_path.stem + "_preview.png"
+                preview_path = output_path.parent / preview_filename
+                preview_image.save(str(preview_path))
+                
+                logger.info(f"DICOM preview saved: {preview_path}")
+            except Exception as e:
+                logger.warning(f"Preview generation failed (non-fatal): {e}")
+                preview_filename = None
         else:
             # Convert to correct mode before saving
             if len(pixel_array.shape) == 2:
@@ -463,7 +510,9 @@ async def anonymize_image(file: UploadFile = File(...)):
             "total_regions": merged_count,
             "redacted": redacted_count,
             "skipped": skipped_count,
-            "output_filename": output_filename
+            "output_filename": output_filename,
+            "preview_filename": preview_filename,
+            "original_preview_filename": original_preview_filename
         }
         
         # Add MinIO fields if upload succeeded

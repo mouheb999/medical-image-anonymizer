@@ -9,6 +9,7 @@ Pillow>=9.0.0
 
 # Medical Imaging
 pydicom>=2.3.0
+python-gdcm>=3.0.0  # DICOM decompression (no numpy conflict)
 
 # OCR Engines
 paddleocr>=2.6.0
@@ -24,3 +25,11 @@ scikit-learn>=1.0.0
 # Storage & Configuration
 minio>=7.1.0
 python-dotenv>=1.0.0
+
+# FastAPI Backend
+fastapi>=0.100.0
+uvicorn>=0.23.0
+python-multipart>=0.0.6
+
+# NOTE: pylibjpeg and pylibjpeg-libjpeg removed due to numpy>=2.0 conflict
+# Use python-gdcm instead for compressed DICOM support (JPEG Lossless, JPEG 2000, etc.)

@@ -139,7 +139,7 @@ class DICOMValidator:
                 str(file_path)
             )
         
-        # Log success
+        # Log succes
         modality = getattr(dataset, 'Modality', 'Unknown')
         patient_id = getattr(dataset, 'PatientID', 'Unknown')
         logger.info(
