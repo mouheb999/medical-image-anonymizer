@@ -8,7 +8,20 @@ A production-ready, AI-powered medical image anonymization system that combines 
 
 ---
 
-## 🎯 Features
+## � Full Stack Application
+
+This project includes a complete web application:
+
+- **React Frontend** (`client/`) — 3-role UI with dark/light themes
+- **Node.js Backend** (`backend/`) — JWT auth, MongoDB, MinIO integration
+- **FastAPI Pipeline** (`api/`) — 7-stage AI anonymization
+- **MinIO S3** — Secure image storage with category organization
+
+See [MERN_SETUP.md](MERN_SETUP.md) for setup instructions.
+
+---
+
+## �🎯 Features
 
 - **7-Stage Processing Pipeline**: Classification → Validation → Metadata Anonymization → Preprocessing → Dual OCR → Redaction → Save
 - **AI-Powered Classification**: CLIP model detects medical vs non-medical images
