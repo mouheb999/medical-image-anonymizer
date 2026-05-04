@@ -19,11 +19,30 @@ const anonymizeImage = async (req, res) => {
       })
     }
     
+    // Extract OCR parameters from request body (sent by frontend)
+    const conf_threshold = parseFloat(req.body.conf_threshold) || 0.1
+    const padding = parseInt(req.body.padding) || 5
+    const border_margin = parseInt(req.body.border_margin) || 100
+    const border_pct = parseFloat(req.body.border_pct) || 0.20
+    
+    console.log('[DEBUG] OCR Parameters from frontend:', {
+      conf_threshold,
+      padding,
+      border_margin,
+      border_pct
+    })
+    
     const formData = new FormData()
     formData.append('file', req.file.buffer, {
       filename: req.file.originalname,
       contentType: req.file.mimetype
     })
+    
+    // Forward parameters to FastAPI
+    formData.append('conf_threshold', conf_threshold.toString())
+    formData.append('padding', padding.toString())
+    formData.append('border_margin', border_margin.toString())
+    formData.append('border_pct', border_pct.toString())
     
     const fastApiResponse = await axios.post(
       `${process.env.FASTAPI_URL}/anonymize`,

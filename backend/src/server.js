@@ -9,8 +9,8 @@ connectDB().then(() => {
     console.log(`
     ╔════════════════════════════════════════╗
     ║   Medical Anonymizer Backend           ║
-    ║   Server running on port ${PORT}          ║
-    ║   Environment: ${process.env.NODE_ENV}       ║
+    ║   Server running on port ${PORT}       ║
+    ║   Environment: ${process.env.NODE_ENV} ║
     ╚════════════════════════════════════════╝
     `)
   })

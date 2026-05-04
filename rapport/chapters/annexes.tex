@@ -1,0 +1,384 @@
+% ============================================================
+%  ANNEXES
+% ============================================================
+\chapter{Extraits de code significatifs}
+\label{annexe:code}
+
+\section{Configuration complète des variables d'environnement}
+
+\begin{lstlisting}[language=bash, caption={backend/.env -- Variables d'environnement complètes}, label={lst:env_complet}]
+# Serveur
+PORT=5000
+NODE_ENV=development
+
+# Base de données
+MONGO_URI=mongodb://localhost:27017/medical_anonymizer
+
+# Authentification JWT
+JWT_SECRET=votre_cle_secrete_jwt_tres_longue_32_caracteres_minimum
+JWT_EXPIRE=7d
+
+# Clé d'enregistrement administrateur
+ADMIN_REGISTRATION_KEY=PURA_ADMIN_2026
+
+# URL du pipeline IA FastAPI
+FASTAPI_URL=http://localhost:8000
+
+# Frontend (CORS)
+FRONTEND_URL=http://localhost:3000
+
+# MinIO Object Storage
+MINIO_ENDPOINT=localhost:9000
+MINIO_ACCESS_KEY=minioadmin
+MINIO_SECRET_KEY=minioadmin
+MINIO_BUCKET=anonymized-images
+MINIO_SECURE=false
+\end{lstlisting}
+
+\section{Modèle Mongoose History (journal des opérations)}
+
+\begin{lstlisting}[language=JavaScript, caption={Modèle Mongoose History}, label={lst:history_model}]
+// backend/src/models/History.js
+const mongoose = require('mongoose')
+
+const HistorySchema = new mongoose.Schema({
+  user: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User', required: true
+  },
+  filename:        { type: String, required: true },
+  status:          { type: String, enum: ['success','failed'],
+                     default: 'success' },
+  category:        String,
+  confidence:      Number,
+  regionsDetected: Number,
+  regionsRedacted: Number,
+  tagsAnonymized:  Number,
+  processingTime:  Number,
+  minioUri:        String,
+  downloadUrl:     String,
+  confThreshold:   Number,
+  padding:         Number,
+  borderMargin:    Number,
+  borderPct:       Number
+}, { timestamps: true })
+
+module.exports = mongoose.model('History', HistorySchema)
+\end{lstlisting}
+
+\section{Route d'anonymisation backend}
+
+\begin{lstlisting}[language=JavaScript, caption={Route d'anonymisation Node.js}, label={lst:route_anon}]
+// backend/src/routes/anonymize.js
+const express    = require('express')
+const router     = express.Router()
+const { protect } = require('../middleware/auth')
+const { upload }  = require('../middleware/upload')
+const { anonymizeImage } = require('../controllers/anonymizeController')
+
+router.post('/', protect, upload.single('file'), anonymizeImage)
+
+module.exports = router
+\end{lstlisting}
+
+\section{Middleware d'upload Multer}
+
+\begin{lstlisting}[language=JavaScript, caption={Configuration Multer -- stockage mémoire et filtre}, label={lst:multer}]
+// backend/src/middleware/upload.js
+const multer = require('multer')
+
+const storage = multer.memoryStorage()
+
+const fileFilter = (req, file, cb) => {
+  const allowed = ['.jpg', '.jpeg', '.png', '.bmp',
+                   '.tiff', '.tif', '.dcm', '.dicom']
+  const ext = '.' + file.originalname.split('.').pop().toLowerCase()
+  if (allowed.includes(ext)) {
+    cb(null, true)
+  } else {
+    cb(new Error(`Format non supporté: ${ext}`), false)
+  }
+}
+
+exports.upload = multer({
+  storage,
+  fileFilter,
+  limits: { fileSize: 50 * 1024 * 1024 }  // 50 Mo
+})
+\end{lstlisting}
+
+\section{Anonymiseur de métadonnées DICOM}
+
+\begin{lstlisting}[language=Python, caption={MetadataAnonymizer -- suppression des tags PHI DICOM}, label={lst:metadata}]
+# anonymizer/metadata_anonymizer.py (extrait)
+PHI_TAGS = [
+    (0x0010, 0x0010),  # Patient Name
+    (0x0010, 0x0020),  # Patient ID
+    (0x0010, 0x0030),  # Patient Birth Date
+    (0x0010, 0x0040),  # Patient Sex
+    (0x0010, 0x1010),  # Patient Age
+    (0x0010, 0x1030),  # Patient Weight
+    (0x0008, 0x0080),  # Institution Name
+    (0x0008, 0x0081),  # Institution Address
+    (0x0008, 0x0090),  # Referring Physician Name
+    (0x0008, 0x1048),  # Physician(s) of Record
+    (0x0008, 0x1050),  # Performing Physician Name
+    (0x0020, 0x0010),  # Study ID
+    (0x0008, 0x0020),  # Study Date
+    (0x0008, 0x0030),  # Study Time
+    (0x0008, 0x103E),  # Series Description
+    (0x0040, 0xA124),  # UID (de-identify)
+]
+
+class MetadataAnonymizer:
+    def anonymize(self, dataset):
+        count = 0
+        for tag in PHI_TAGS:
+            if tag in dataset:
+                try:
+                    dataset[tag].value = ''
+                    count += 1
+                except Exception:
+                    pass
+        return dataset, count
+\end{lstlisting}
+
+\section{Endpoint FastAPI complet /anonymize}
+
+\begin{lstlisting}[language=Python, caption={Endpoint FastAPI /anonymize -- orchestration du pipeline}, label={lst:fastapi_endpoint}]
+# api/main.py -- endpoint /anonymize (extrait condensé)
+@app.post("/anonymize")
+async def anonymize_image(
+    file: UploadFile = File(...),
+    conf_threshold: float = Form(0.1),
+    padding:        int   = Form(5),
+    border_margin:  int   = Form(100),
+    border_pct:     float = Form(0.20)
+):
+    start = time.time()
+    # Sauvegarde temporaire
+    temp_in = TEMP_DIR / f"tmp_{datetime.now():%Y%m%d_%H%M%S}_{file.filename}"
+    content = await file.read()
+    temp_in.write_bytes(content)
+
+    # Stage 1: Classification
+    classifier = MedicalImageClassifier()
+    category, confidence, _ = classifier.classify_image(str(temp_in))
+    if "non_medical" in category:
+        raise HTTPException(400, f"Image non médicale ({confidence:.2f})")
+
+    # Stage 2-3: Validation + Métadonnées DICOM
+    validator = ImageValidator()
+    result    = validator.validate(str(temp_in))
+    is_dicom  = result.is_dicom
+    pixels    = result.pixel_array
+    dataset   = result.dataset
+    tags_anon = 0
+    if is_dicom:
+        meta = MetadataAnonymizer()
+        dataset, tags_anon = meta.anonymize(dataset)
+
+    # Stage 4: CLAHE
+    prep     = BorderPreprocessor(border_pct=0.15)
+    enhanced = prep.enhance(pixels if pixels is not None else np.array([]))
+
+    # Stage 5: OCR double moteur
+    paddle = TextDetector(lang="en", conf_threshold=conf_threshold)
+    easy   = EasyTextDetector(conf_threshold=conf_threshold,
+                               border_pct=border_pct)
+    p_reg  = paddle.detect_text(enhanced)
+    e_reg  = easy.detect_text(enhanced)
+    merged = merge_and_deduplicate(p_reg, e_reg, 0.5)
+
+    # Stage 6: Redaction
+    redactor = PixelRedactor(padding=padding, border_margin=border_margin)
+    out_data, n_redacted = redactor.redact(
+        dataset if is_dicom else pixels,
+        merged, padding=padding,
+        border_margin=border_margin, redact_all_regions=True
+    )
+
+    # Stage 7: Sauvegarde + MinIO
+    out_file = OUTPUT_DIR / f"anonymized_{file.filename}"
+    # ... sauvegarde + upload MinIO ...
+
+    return JSONResponse({
+        "status": "success",
+        "category": category, "confidence": float(confidence),
+        "regions_detected": len(merged),
+        "regions_redacted": n_redacted,
+        "tags_anonymized": tags_anon,
+        "processing_time": round(time.time() - start, 2),
+        "filename": out_file.name
+    })
+\end{lstlisting}
+
+% ============================================================
+\chapter{Documentation de l'API}
+\label{annexe:api}
+
+\section{Swagger -- Documentation automatique FastAPI}
+
+FastAPI génère automatiquement une documentation interactive Swagger UI accessible à l'adresse \texttt{http://localhost:8000/docs}. Cette documentation liste tous les endpoints, les schémas de requête/réponse et permet de tester l'API directement depuis le navigateur.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{example-image}
+  \caption{Documentation Swagger auto-générée par FastAPI (http://localhost:8000/docs)}
+  \label{fig:swagger}
+\end{figure}
+
+\section{Exemples de requêtes et réponses}
+
+\begin{lstlisting}[language=Python, caption={Exemple de requête d'anonymisation avec curl}, label={lst:curl}]
+curl -X POST http://localhost:5000/api/anonymize \
+  -H "Authorization: Bearer <JWT_TOKEN>" \
+  -F "file=@/path/to/xray.jpg" \
+  -F "conf_threshold=0.1" \
+  -F "padding=5" \
+  -F "border_margin=100" \
+  -F "border_pct=0.20"
+\end{lstlisting}
+
+\begin{lstlisting}[language=Python, caption={Exemple de réponse JSON en cas de succès}, label={lst:response_json}]
+{
+  "success": true,
+  "data": {
+    "status": "success",
+    "filename": "anonymized_xray.jpg",
+    "category": "chest",
+    "confidence": 0.9412,
+    "regions_detected": 8,
+    "regions_redacted": 7,
+    "regions_skipped": 1,
+    "tags_anonymized": 0,
+    "processing_time": 2.84,
+    "download_url": "http://localhost:9000/anonymized-images/chest/2026/04/08/anonymized_xray.jpg?...",
+    "format": "JPEG"
+  }
+}
+\end{lstlisting}
+
+\begin{lstlisting}[language=Python, caption={Exemple de réponse en cas d'image non médicale}, label={lst:response_error}]
+{
+  "status": "failed",
+  "error": "non_medical",
+  "message": "Image classified as non-medical (confidence: 0.87)",
+  "classification": "non_medical",
+  "confidence": 0.87
+}
+\end{lstlisting}
+
+% ============================================================
+\chapter{Guide d'installation et de déploiement}
+\label{annexe:install}
+
+\section{Prérequis système}
+
+\begin{itemize}
+  \item \textbf{Système d'exploitation}~: Windows 10/11, Ubuntu 20.04+ ou macOS 12+
+  \item \textbf{Python}~: Version 3.10.x (recommandé~: 3.10.11)
+  \item \textbf{Node.js}~: Version 18.x ou supérieure
+  \item \textbf{MongoDB}~: Version 6.0 ou supérieure (local ou Atlas)
+  \item \textbf{Docker}~: Version 24.0 ou supérieure (pour MinIO)
+  \item \textbf{RAM}~: Minimum 8 Go (16 Go recommandé pour CLIP + PaddleOCR)
+  \item \textbf{Espace disque}~: Minimum 10 Go pour les modèles et dépendances
+\end{itemize}
+
+\section{Installation étape par étape}
+
+\begin{lstlisting}[language=bash, caption={Procédure d'installation complète}, label={lst:install}]
+# 1. Cloner le projet
+git clone https://github.com/[votre-repo]/PFE_Test.git
+cd PFE_Test
+
+# 2. Créer et activer l'environnement virtuel Python
+python -m venv venv
+# Windows:
+venv\Scripts\activate
+# Linux/macOS:
+source venv/bin/activate
+
+# 3. Installer les dépendances Python
+pip install -r requirements.txt
+
+# 4. Installer les dépendances Node.js (backend)
+cd backend && npm install && cd ..
+
+# 5. Installer les dépendances Node.js (frontend)
+cd client && npm install && cd ..
+
+# 6. Configurer les variables d'environnement
+cp backend/.env.example backend/.env
+# Éditer backend/.env avec vos valeurs
+
+# 7. Démarrer MinIO avec Docker
+docker compose up -d minio
+
+# 8. Démarrer MongoDB (si local)
+mongod --dbpath /data/db
+
+# 9. Démarrer le backend Node.js
+cd backend && npm start &
+
+# 10. Démarrer le pipeline FastAPI
+python -m uvicorn api.main:app --reload --port 8000 &
+
+# 11. Démarrer le frontend React
+cd client && npm run dev
+\end{lstlisting}
+
+\section{Accès à l'application}
+
+Une fois tous les services démarrés~:
+
+\begin{itemize}
+  \item \textbf{Frontend React}~: \url{http://localhost:3000}
+  \item \textbf{Backend Node.js}~: \url{http://localhost:5000}
+  \item \textbf{API FastAPI + Swagger}~: \url{http://localhost:8000/docs}
+  \item \textbf{Console MinIO}~: \url{http://localhost:9001} (minioadmin / minioadmin)
+\end{itemize}
+
+% ============================================================
+\chapter{Glossaire des termes techniques}
+\label{annexe:glossaire}
+
+\textbf{Anonymisation}~: Processus irréversible consistant à rendre impossible toute identification d'une personne à partir de données personnelles.
+
+\textbf{API REST}~: Interface de programmation applicative respectant les principes architecturaux REST (Representational State Transfer), utilisant les méthodes HTTP (GET, POST, PUT, DELETE).
+
+\textbf{Bcrypt}~: Algorithme de hachage de mots de passe adaptatif, conçu pour être intentionnellement lent afin de résister aux attaques par force brute.
+
+\textbf{CLAHE}~: Contrast Limited Adaptive Histogram Equalization. Technique d'amélioration de contraste local évitant la surexposition des zones déjà contrastées.
+
+\textbf{CLIP}~: Contrastive Language--Image Pre-training. Modèle de vision-langage d'OpenAI entraîné sur 400 millions de paires image-texte, capable de classification zéro-shot.
+
+\textbf{DICOM}~: Digital Imaging and Communications in Medicine. Standard international pour le stockage, l'échange et la transmission d'images médicales numériques.
+
+\textbf{Deep Learning}~: Sous-domaine du Machine Learning utilisant des réseaux de neurones à de nombreuses couches pour apprendre des représentations hiérarchiques des données.
+
+\textbf{FastAPI}~: Framework Python web moderne, haute performance, pour la construction d'APIs avec Python 3.7+ basé sur les annotations de type standard de Python.
+
+\textbf{Inpainting}~: Technique de reconstruction numérique consistant à remplir des régions manquantes ou masquées d'une image en propageant les valeurs des pixels environnants.
+
+\textbf{IoU (Intersection over Union)}~: Métrique de chevauchement entre deux boîtes englobantes, calculée comme le rapport de l'intersection sur l'union des deux surfaces.
+
+\textbf{JWT (JSON Web Token)}~: Standard RFC~7519 définissant un moyen compact et autonome de transmettre des informations entre parties sous forme de JSON signé numériquement.
+
+\textbf{MinIO}~: Serveur de stockage objet open-source haute performance, compatible avec l'API Amazon S3, déployable sur site.
+
+\textbf{OCR (Optical Character Recognition)}~: Reconnaissance optique de caractères. Technologie permettant de localiser et d'identifier le texte présent dans une image numérique.
+
+\textbf{PaddleOCR}~: Bibliothèque OCR open-source de Baidu, basée sur PaddlePaddle, offrant des performances de pointe pour la détection et la reconnaissance de texte multilingue.
+
+\textbf{PHI (Protected Health Information)}~: Selon HIPAA, toute information de santé individuellement identifiable relative à l'état de santé passé, présent ou futur d'un individu.
+
+\textbf{RBAC (Role-Based Access Control)}~: Contrôle d'accès basé sur les rôles. Modèle de sécurité dans lequel les autorisations sont associées à des rôles et les utilisateurs se voient attribuer des rôles.
+
+\textbf{RGPD}~: Règlement Général sur la Protection des Données. Réglementation européenne (2016/679) sur la protection des données à caractère personnel, entrée en vigueur le 25 mai 2018.
+
+\textbf{TELEA}~: Algorithme d'inpainting basé sur la méthode Fast Marching, proposé par Alexandru Telea en 2004 et implémenté dans OpenCV sous le nom \texttt{cv2.INPAINT\_TELEA}.
+
+\textbf{ViT (Vision Transformer)}~: Architecture de réseau de neurones appliquant le mécanisme d'attention multi-têtes (Transformer) directement sur des séquences de patches d'images.
+
+\textbf{Zéro-shot}~: Capacité d'un modèle à classifier ou reconnaître des catégories qu'il n'a jamais vues explicitement pendant l'entraînement, en s'appuyant sur des descriptions textuelles.

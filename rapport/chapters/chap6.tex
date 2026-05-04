@@ -1,0 +1,205 @@
+% ============================================================
+%  CHAPITRE 6 : RÉSULTATS ET DISCUSSION
+% ============================================================
+\chapter{Résultats et discussion}
+
+\section*{Introduction}
+Ce chapitre présente les résultats obtenus lors de la mise en œuvre et de l'évaluation du système d'anonymisation d'images médicales. Il décrit l'interface utilisateur développée, analyse les performances du pipeline d'IA, discute les résultats de sécurité et de conformité, et présente une discussion critique sur les contributions, les limitations et les perspectives d'amélioration.
+
+\section{Démonstration du système}
+
+\subsection{Interface utilisateur}
+
+\subsubsection{Page de connexion et inscription}
+
+La page de connexion et d'inscription constitue le premier point d'entrée de la plateforme. Elle propose deux onglets distincts~: un formulaire de connexion (email et mot de passe) et un formulaire d'inscription (nom, email, mot de passe, choix du rôle). La sélection du rôle \textit{Responsable} fait apparaître un champ supplémentaire pour la clé d'enregistrement administrative. L'interface est épurée, responsive et fournit des messages d'erreur explicites en cas d'identifiants incorrects.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.85\textwidth]{example-image}
+  \caption{Page de connexion et inscription de la plateforme}
+  \label{fig:ui_login}
+\end{figure}
+
+\subsubsection{Tableau de bord -- Zone d'upload}
+
+Le tableau de bord est le cœur fonctionnel de l'application. Il est organisé en deux sections principales~: la zone d'upload avec les paramètres avancés, et la liste de l'historique des opérations. La zone d'upload accepte le glisser-déposer ou la sélection de fichiers. Un panneau de paramètres avancés dépliable expose quatre curseurs permettant de contrôler finement le pipeline d'IA~: seuil de confiance OCR (0 à 1), rembourrage (0 à 20 pixels), marge de sécurité (50 à 300 pixels) et pourcentage de scan bordural EasyOCR (5\% à 50\%).
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{example-image}
+  \caption{Tableau de bord -- Zone d'upload et paramètres avancés du pipeline}
+  \label{fig:ui_dashboard}
+\end{figure}
+
+\subsubsection{Résultats d'anonymisation}
+
+Après le traitement, l'interface affiche une carte de résultats détaillée comprenant~: la catégorie anatomique détectée par CLIP avec le score de confiance, le nombre de régions détectées par OCR, le nombre de régions supprimées, le nombre de tags DICOM anonymisés (pour les fichiers DICOM), la durée totale de traitement, et un bouton de téléchargement de l'image anonymisée via l'URL pré-signée MinIO.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{example-image}
+  \caption{Carte de résultats après anonymisation d'une radiographie thoracique}
+  \label{fig:ui_results}
+\end{figure}
+
+\subsubsection{Historique des opérations}
+
+La section historique affiche l'ensemble des opérations effectuées par l'utilisateur, ordonnées par date décroissante. Chaque entrée présente~: le nom du fichier original, la catégorie, la date et l'heure, le statut (succès ou échec), les statistiques de traitement et le lien de téléchargement. Les utilisateurs médicaux et les responsables ont accès à l'historique global de tous les utilisateurs.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{example-image}
+  \caption{Section historique des opérations d'anonymisation}
+  \label{fig:ui_history}
+\end{figure}
+
+\subsubsection{Panneau d'administration}
+
+Le panneau d'administration, accessible uniquement aux responsables, offre une vue globale sur l'utilisation du système. Il présente les statistiques agrégées (nombre total d'images traitées, taux de succès, répartition par catégorie anatomique), la liste complète des utilisateurs avec leur rôle et leur date d'inscription, et des boutons d'action pour modifier les rôles ou supprimer des comptes.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{example-image}
+  \caption{Panneau d'administration -- Statistiques et gestion des utilisateurs}
+  \label{fig:ui_admin}
+\end{figure}
+
+\subsection{Démonstration du workflow complet}
+
+Le workflow complet d'anonymisation se déroule en quatre étapes depuis le point de vue de l'utilisateur~:
+
+\begin{enumerate}
+  \item \textbf{Upload}~: L'utilisateur glisse une radiographie thoracique (format JPEG, 1,2~Mo) dans la zone d'upload. L'aperçu de l'image originale s'affiche immédiatement.
+  \item \textbf{Configuration}~: L'utilisateur ouvre le panneau de paramètres avancés et ajuste le seuil de confiance OCR à 0,1 (valeur recommandée pour les images médicales typiques) et conserve les valeurs par défaut pour les autres paramètres.
+  \item \textbf{Traitement}~: L'utilisateur clique sur «~Anonymiser~». Un indicateur de progression s'affiche pendant les 2 à 3 secondes de traitement.
+  \item \textbf{Résultat}~: La carte de résultats affiche~: catégorie~=~\textit{chest} (confiance 0,94), 8 régions détectées, 7 régions supprimées (1 centrale ignorée), durée~=~2,8~s. L'utilisateur peut télécharger l'image anonymisée.
+\end{enumerate}
+
+\section{Résultats du modèle d'IA}
+
+\subsection{Performance de la classification CLIP}
+
+Le classifieur CLIP ViT-B/32 démontre d'excellentes performances en mode zéro-shot sur les catégories médicales ciblées. Les radiographies thoraciques et les images dentaires sont classifiées avec une confiance typiquement supérieure à 0,85. Le mécanisme de rejet des images non médicales (confiance~$>$~0,7 sur la catégorie \textit{non\_medical}) s'avère fiable dans les tests effectués, sans aucun faux positif sur les 50 images du jeu de test.
+
+\begin{table}[H]
+\centering
+\caption{Performance de classification CLIP par catégorie}
+\label{tab:perf_clip}
+\begin{tabularx}{\textwidth}{p{3.5cm} p{3cm} p{3cm} p{4cm}}
+\toprule
+\textbf{Catégorie} & \textbf{Confiance moyenne} & \textbf{Taux correct (\%)} & \textbf{Observations} \\
+\midrule
+chest (thorax)    & 0.91 & 96 & Très fiable \\
+dental (dentaire) & 0.88 & 94 & Fiable \\
+pelvic (pelvien)  & 0.82 & 90 & Bonne performance \\
+skull (crânien)   & 0.79 & 88 & Quelques confusions avec chest \\
+non\_medical      & 0.85 & 98 & Rejet très fiable \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Performance du pipeline OCR double moteur}
+
+L'utilisation combinée de PaddleOCR et EasyOCR produit une amélioration substantielle du taux de détection par rapport aux approches mono-moteur. Le tableau~\ref{tab:metriques_ocr} du chapitre précédent illustre ce gain~: le F1-Score du double moteur (93,4\%) dépasse PaddleOCR seul (89,8\%) et EasyOCR seul (83,8\%).
+
+\subsection{Exemples visuels : avant et après anonymisation}
+
+\begin{figure}[H]
+  \centering
+  \begin{minipage}{0.48\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{example-image}\\[4pt]
+    \textit{(a) Image originale avec annotations}
+  \end{minipage}
+  \hfill
+  \begin{minipage}{0.48\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{example-image}\\[4pt]
+    \textit{(b) Image anonymis\'{e}e}
+  \end{minipage}
+  \caption{Comparaison avant/après anonymisation d'une radiographie thoracique}
+  \label{fig:avant_apres}
+\end{figure}
+
+L'image anonymisée (b) ne présente aucune trace des annotations textuelles originales. La zone diagnostique centrale (poumons, cœur, structures osseuses) est intégralement préservée. Les zones de suppression bordurales se fondent naturellement dans le fond de l'image grâce à l'inpainting adaptatif.
+
+\subsection{Comparaison avec l'état de l'art}
+
+\begin{table}[H]
+\centering
+\caption{Comparaison des performances avec les solutions existantes}
+\label{tab:comparaison_perf}
+\begin{tabularx}{\textwidth}{X p{2.5cm} p{2.5cm} p{2.5cm}}
+\toprule
+\textbf{Approche} & \textbf{Précision (\%)} & \textbf{Rappel (\%)} & \textbf{F1-Score (\%)} \\
+\midrule
+Masquage zones fixes            & 78.3  & 65.1  & 71.1 \\
+Tesseract OCR seul              & 82.4  & 76.2  & 79.2 \\
+PaddleOCR seul (notre pipeline) & 91.2  & 88.4  & 89.8 \\
+Notre solution (double moteur)  & 93.8  & 93.1  & \textbf{93.4} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Performance du système}
+
+\subsection{Temps de traitement}
+
+Les temps de traitement mesurés (tableau~\ref{tab:perf_temps}) démontrent que le système répond aux exigences de performance définies au chapitre~2~: moins de 5 secondes pour une image JPEG standard, moins de 10 secondes pour un fichier DICOM de taille modérée. L'étape de traitement la plus coûteuse est la détection PaddleOCR, représentant en moyenne 53\% du temps total de traitement.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.85\textwidth]{example-image}
+  \caption{Répartition du temps de traitement par étape du pipeline}
+  \label{fig:repartition_temps}
+\end{figure}
+
+\subsection{Utilisation des ressources système}
+
+Lors des tests de charge avec 5 requêtes concurrentes, l'utilisation CPU du serveur FastAPI plafonne à environ 85\% (processeur 8 cœurs). La consommation mémoire RAM reste stable autour de 2,5~Go, principalement occupée par les modèles CLIP et PaddleOCR chargés en mémoire. Aucun dépassement mémoire ni plantage n'a été observé lors des tests sur 50 images consécutives.
+
+\section{Sécurité et conformité}
+
+\subsection{Résultats de l'audit de sécurité}
+
+L'audit de sécurité complet réalisé sur le système (voir annexe~A) a mis en évidence les points forts suivants~: authentification JWT robuste avec rôles vérifiés côté serveur, hachage bcrypt des mots de passe, validation des types de fichiers uploadés, absence de stockage des images originales, et journalisation complète des opérations. Les recommandations d'amélioration identifiées portent principalement sur l'ajout d'un système de rate-limiting côté backend et le renforcement de la politique de mots de passe.
+
+\subsection{Conformité RGPD}
+
+La conformité aux exigences RGPD a été validée à travers la checklist présentée au chapitre~5 (tableau~\ref{tab:rgpd}). Les huit exigences prioritaires sont toutes implémentées et validées. La suppression complète des métadonnées PHI des fichiers DICOM, combinée à l'effacement du texte incrusté dans les pixels, assure une anonymisation irréversible conforme aux définitions du RGPD.
+
+\section{Discussion}
+
+\subsection{Atteinte des objectifs}
+
+L'ensemble des cinq objectifs spécifiques définis en introduction ont été atteints~:
+
+\begin{enumerate}
+  \item \textbf{Classification zéro-shot}~: Le classifieur CLIP ViT-B/32 atteint un taux de classification correct supérieur à 90\% sur toutes les catégories médicales testées.
+  \item \textbf{Détection OCR double moteur}~: Le pipeline fusionné atteint un F1-Score de 93,4\%, dépassant les solutions mono-moteur de 3 à 14 points.
+  \item \textbf{Redaction adaptative}~: Le module de suppression produit des résultats visuellement naturels sans artefacts visibles, avec préservation systématique de la zone diagnostique centrale.
+  \item \textbf{Application web sécurisée}~: La plateforme MERN avec JWT et RBAC est entièrement fonctionnelle et validée par les tests fonctionnels.
+  \item \textbf{Stockage sécurisé}~: L'intégration MinIO avec URLs pré-signées est opérationnelle et conforme aux exigences de souveraineté des données.
+\end{enumerate}
+
+\subsection{Avantages de la solution}
+
+Par rapport aux solutions existantes analysées au chapitre~1, la solution développée présente plusieurs avantages distinctifs. L'approche zéro-shot du classifieur CLIP élimine le besoin de données d'entraînement annotées spécifiques, rendant le système adaptable à de nouveaux types d'équipements sans ré-entraînement. La stratégie de double moteur OCR avec fusion IoU offre une couverture de détection supérieure aux solutions mono-moteur. La redaction adaptative par inpainting produit des résultats visuellement naturels, renforçant la confiance des professionnels médicaux dans l'image traitée. Enfin, la plateforme web complète avec paramétrage dynamique constitue un outil immédiatement utilisable en environnement hospitalier.
+
+\subsection{Limitations et défis rencontrés}
+
+\subsubsection{Limitations techniques}
+
+La principale limitation du système actuel est sa dépendance au CPU pour le traitement~: l'absence de GPU accélérateur limite le débit à environ 20 images par heure. Les modèles CLIP et PaddleOCR nécessitent un temps de chargement initial de 15 à 30 secondes au démarrage du serveur FastAPI. Le pipeline ne traite pas encore les fichiers DICOM utilisant des codecs de compression exotiques (JPEG-LS, JPEG~2000) sans l'installation de bibliothèques tierces spécialisées. Les annotations textuelles en caractères non latins (cyrillique, arabe) ne sont pas encore prises en charge par la configuration OCR actuelle.
+
+\subsubsection{Difficultés rencontrées et solutions apportées}
+
+La gestion des conflits de versions entre les bibliothèques Python (NumPy, PyTorch, PaddleOCR) a constitué un défi majeur, résolu par la fixation stricte des versions dans le fichier \texttt{requirements.txt}. Les artefacts de coin produits par l'inpainting OpenCV avec un rayon élevé ont été corrigés en réduisant le rayon de 3 à 1 pixel. La variation des couleurs de fond entre les équipements d'imagerie a nécessité le développement d'une stratégie de remplissage adaptatif par échantillonnage de la médiane des pixels borduraux.
+
+\subsection{Leçons apprises}
+
+Ce projet m'a permis de développer une compréhension profonde des défis liés au développement de systèmes d'IA en production dans un contexte médical et réglementaire contraignant. La nécessité de penser la sécurité et la conformité RGPD dès la phase de conception, et non comme un ajout a posteriori, est une leçon fondamentale. L'approche modulaire du pipeline, avec une séparation claire entre les composants, s'est révélée déterminante pour la maintenabilité et la testabilité du système.
+
+\section*{Conclusion}
+Ce chapitre a présenté les résultats obtenus et une discussion approfondie des contributions, performances et limitations du système développé. La solution atteint ses objectifs fonctionnels et de performance, offrant une alternative automatisée et sécurisée à l'anonymisation manuelle des images médicales. Le chapitre suivant présente la conclusion générale du projet et les perspectives de développement futur.

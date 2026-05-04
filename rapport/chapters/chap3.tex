@@ -1,0 +1,290 @@
+% ============================================================
+%  CHAPITRE 3 : CONCEPTION
+% ============================================================
+\chapter{Conception}
+
+\section*{Introduction}
+Ce chapitre présente la conception complète du système d'anonymisation d'images médicales. Il détaille l'architecture globale du système, le modèle de données MongoDB, la conception de l'API REST, les mécanismes de sécurité et l'architecture du pipeline d'intelligence artificielle.
+
+\section{Architecture du système}
+
+\subsection{Architecture globale en trois couches}
+
+L'architecture du système repose sur une organisation en trois couches fonctionnelles distinctes et communicantes, chacune dotée d'une responsabilité clairement délimitée.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{example-image}
+  \caption{Architecture globale du système en trois couches}
+  \label{fig:archi_globale}
+\end{figure}
+
+La \textbf{couche de présentation} est assurée par l'application React servie par Vite sur le port 3000. Elle gère l'interface utilisateur, l'authentification côté client (stockage du token JWT dans \texttt{localStorage}), la construction des requêtes \texttt{multipart/form-data} et la présentation des résultats d'anonymisation. Les pages principales sont la page de connexion, le tableau de bord (upload et historique) et le panneau d'administration.
+
+La \textbf{couche applicative} est assurée par le serveur Express (Node.js) sur le port 5000. Elle gère l'authentification et l'autorisation (middleware JWT), la validation des fichiers uploadés (Multer), la persistance des journaux en MongoDB et la délégation du traitement IA au pipeline FastAPI. Cette couche joue le rôle de passerelle sécurisée~: l'API FastAPI n'est jamais accessible directement depuis le frontend.
+
+La \textbf{couche de traitement IA} est une API FastAPI autonome sur le port 8000. Elle exécute le pipeline d'anonymisation en sept étapes et communique avec MinIO pour le stockage des résultats. Cette séparation garantit que les opérations de deep learning coûteuses en ressources n'impactent pas la disponibilité des routes d'authentification et de consultation.
+
+\subsection{Flux de données complet}
+
+Le flux de données d'une requête d'anonymisation suit le chemin suivant. L'utilisateur soumet une image via l'interface React avec les paramètres souhaités. La requête est interceptée par le middleware JWT du backend Node.js qui vérifie l'authenticité du token. Après validation, le contrôleur d'anonymisation crée un objet \texttt{FormData} intégrant le fichier image et les quatre paramètres du pipeline, puis le transmet à FastAPI. FastAPI exécute les sept étapes du pipeline, stocke le résultat dans MinIO et retourne un JSON contenant les statistiques et l'URL pré-signée. Le backend Node.js persiste le journal de l'opération en MongoDB et transmet la réponse au frontend.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{example-image}
+  \caption{Diagramme de déploiement du système}
+  \label{fig:deploiement}
+\end{figure}
+
+\section{Conception de la base de données}
+
+\subsection{Modèle de données MongoDB}
+
+La base de données MongoDB \texttt{medical\_anonymizer} héberge deux collections principales~: \texttt{users} et \texttt{logs} (désignée \texttt{histories} dans l'implémentation).
+
+\subsubsection{Collection \texttt{users}}
+
+\begin{table}[H]
+\centering
+\caption{Structure de la collection \texttt{users}}
+\label{tab:collection_users}
+\begin{tabularx}{\textwidth}{p{3cm} p{2.5cm} p{2cm} X}
+\toprule
+\textbf{Champ} & \textbf{Type Mongoose} & \textbf{Requis} & \textbf{Contraintes / Description} \\
+\midrule
+\texttt{\_id}       & ObjectId   & Auto & Identifiant unique généré par MongoDB \\
+\texttt{name}       & String     & Oui  & Longueur max 50 caractères \\
+\texttt{email}      & String     & Oui  & Unique, indexé, validé par regex \\
+\texttt{password}   & String     & Oui  & Hash bcrypt, \texttt{select: false} \\
+\texttt{role}       & String     & Oui  & Enum~: utilisateur / utilisateur\_medical / responsable \\
+\texttt{createdAt}  & Date       & Auto & Horodatage de création \\
+\texttt{updatedAt}  & Date       & Auto & Horodatage de dernière modification \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsubsection{Collection \texttt{histories}}
+
+\begin{table}[H]
+\centering
+\caption{Structure de la collection \texttt{histories}}
+\label{tab:collection_histories}
+\begin{tabularx}{\textwidth}{p{3.5cm} p{2.5cm} p{1.8cm} X}
+\toprule
+\textbf{Champ} & \textbf{Type} & \textbf{Requis} & \textbf{Description} \\
+\midrule
+\texttt{\_id}             & ObjectId        & Auto & Identifiant unique \\
+\texttt{user}             & ObjectId (ref)  & Oui  & Référence à l'utilisateur \\
+\texttt{filename}         & String          & Oui  & Nom du fichier original \\
+\texttt{status}           & String          & Oui  & \texttt{success} ou \texttt{failed} \\
+\texttt{category}         & String          & Non  & Catégorie CLIP (chest, dental, etc.) \\
+\texttt{confidence}       & Number          & Non  & Score de confiance CLIP (0--1) \\
+\texttt{regionsDetected}  & Number          & Non  & Nombre de régions OCR détectées \\
+\texttt{regionsRedacted}  & Number          & Non  & Nombre de régions supprimées \\
+\texttt{tagsAnonymized}   & Number          & Non  & Nombre de tags DICOM anonymisés \\
+\texttt{processingTime}   & Number          & Non  & Durée totale de traitement (ms) \\
+\texttt{minioUri}         & String          & Non  & URI interne MinIO \\
+\texttt{downloadUrl}      & String          & Non  & URL pré-signée (24h) \\
+\texttt{confThreshold}    & Number          & Non  & Seuil de confiance OCR utilisé \\
+\texttt{padding}          & Number          & Non  & Rembourrage en pixels \\
+\texttt{borderMargin}     & Number          & Non  & Marge de sécurité en pixels \\
+\texttt{borderPct}        & Number          & Non  & Pourcentage de scan bordural \\
+\texttt{createdAt}        & Date            & Auto & Horodatage de l'opération \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Dictionnaire des données principal}
+
+Les champs \texttt{email} et \texttt{user} (référence) sont indexés pour optimiser les performances des requêtes de consultation d'historique et d'authentification. Le champ \texttt{password} est exclu des requêtes par défaut (\texttt{select: false}) afin de prévenir toute exposition accidentelle dans les réponses API.
+
+\section{Conception de l'API REST}
+
+\subsection{Endpoints du backend Node.js}
+
+\begin{table}[H]
+\centering
+\caption{Endpoints complets de l'API REST Node.js}
+\label{tab:endpoints_nodejs}
+\begin{tabularx}{\textwidth}{p{1.5cm} p{5cm} p{2cm} X}
+\toprule
+\textbf{Méthode} & \textbf{Route} & \textbf{Protection} & \textbf{Description} \\
+\midrule
+POST & \texttt{/api/auth/register}          & Publique         & Inscription d'un utilisateur \\
+POST & \texttt{/api/auth/login}             & Publique         & Connexion et émission JWT \\
+GET  & \texttt{/api/auth/me}               & JWT              & Profil de l'utilisateur courant \\
+POST & \texttt{/api/anonymize}             & JWT              & Pipeline d'anonymisation complet \\
+GET  & \texttt{/api/history}               & JWT              & Historique personnel \\
+GET  & \texttt{/api/history/images/all}    & JWT + Médical    & Toutes les images du système \\
+GET  & \texttt{/api/history/admin/stats}   & JWT + Admin      & Statistiques globales \\
+GET  & \texttt{/api/history/admin/users}   & JWT + Admin      & Liste des utilisateurs \\
+PUT  & \texttt{/api/history/admin/users/:id/role} & JWT + Admin & Modification du rôle \\
+DELETE & \texttt{/api/history/admin/users/:id} & JWT + Admin   & Suppression d'un utilisateur \\
+GET  & \texttt{/api/health}               & Publique         & État du serveur \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Endpoints de l'API FastAPI}
+
+\begin{table}[H]
+\centering
+\caption{Endpoints de l'API FastAPI (port 8000)}
+\label{tab:endpoints_fastapi}
+\begin{tabularx}{\textwidth}{p{1.5cm} p{3cm} p{2cm} X}
+\toprule
+\textbf{Méthode} & \textbf{Route} & \textbf{Protection} & \textbf{Description} \\
+\midrule
+GET  & \texttt{/}         & Publique & Informations sur le service IA \\
+GET  & \texttt{/health}   & Publique & État des composants (CLIP, OCR, OpenCV) \\
+POST & \texttt{/anonymize}& Réseau   & Pipeline complet d'anonymisation \\
+GET  & \texttt{/docs}     & Publique & Documentation Swagger auto-générée \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Formats de requête et de réponse}
+
+La route \texttt{POST /api/anonymize} attend un corps de requête \texttt{multipart/form-data} contenant le champ \texttt{file} (image binaire) et les quatre paramètres \texttt{conf\_threshold} (float), \texttt{padding} (int), \texttt{border\_margin} (int) et \texttt{border\_pct} (float). La réponse en cas de succès est un JSON conforme à la structure suivante~:
+
+\begin{lstlisting}[language=Python, caption={Structure de la réponse JSON d'anonymisation}]
+{
+  "status": "success",
+  "filename": "anonymized_scan.jpg",
+  "category": "chest",
+  "confidence": 0.94,
+  "regions_detected": 8,
+  "regions_redacted": 7,
+  "regions_skipped": 1,
+  "tags_anonymized": 23,
+  "processing_time": 2.34,
+  "download_url": "http://localhost:9000/anonymized-images/...",
+  "format": "JPEG"
+}
+\end{lstlisting}
+
+\section{Conception de la sécurité}
+
+\subsection{Authentification et autorisation}
+
+\subsubsection{Flux JWT}
+
+L'authentification repose sur des tokens JWT signés avec HMAC-SHA256. Le payload du token contient l'identifiant utilisateur et la date d'expiration (7 jours). Le middleware \texttt{protect} vérifie la signature du token, récupère l'utilisateur en base de données et l'attache à l'objet requête. Les middlewares \texttt{responsableOnly} et \texttt{medicalOrResponsable} contrôlent l'accès aux routes sensibles en fonction du rôle persisté en base de données (et non dans le token), ce qui garantit que les changements de rôle sont immédiatement effectifs.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.75\textwidth]{example-image}
+  \caption{Flux d'authentification JWT}
+  \label{fig:jwt_flux}
+\end{figure}
+
+\subsubsection{Gestion des mots de passe}
+
+Les mots de passe sont hachés avec bcrypt au facteur de coût 12, offrant un équilibre optimal entre sécurité et performance. Le hook Mongoose \texttt{pre('save')} déclenche automatiquement le hachage avant toute persistance. La méthode \texttt{matchPassword} sur le modèle User encapsule la comparaison sécurisée avec \texttt{bcrypt.compare}.
+
+\subsection{Gestion des rôles et permissions (RBAC)}
+
+\begin{table}[H]
+\centering
+\caption{Matrice de permissions par rôle}
+\label{tab:rbac}
+\rowcolors{2}{gray!10}{white}
+\begin{tabularx}{\textwidth}{X p{2cm} p{2.5cm} p{2.5cm}}
+\toprule
+\textbf{Action} & \textbf{Utilisateur} & \textbf{Util. médical} & \textbf{Responsable} \\
+\midrule
+Uploader et anonymiser & Oui & Oui & Oui \\
+Consulter son historique & Oui & Oui & Oui \\
+Consulter tous les historiques & Non & Oui & Oui \\
+Télécharger toutes les images & Non & Oui & Oui \\
+Accéder aux statistiques admin & Non & Non & Oui \\
+Gérer les utilisateurs & Non & Non & Oui \\
+Modifier les rôles & Non & Non & Oui \\
+Supprimer des utilisateurs & Non & Non & Oui \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Upload sécurisé avec Multer}
+
+Le middleware Multer est configuré avec un stockage en mémoire vive (\texttt{memoryStorage}), évitant toute écriture de fichiers originaux sur le disque du serveur backend. Le filtre de fichiers (\texttt{fileFilter}) valide les extensions autorisées (\texttt{.jpg}, \texttt{.jpeg}, \texttt{.png}, \texttt{.bmp}, \texttt{.tiff}, \texttt{.dcm}, \texttt{.dicom}) avant d'accepter le fichier. La taille maximale est fixée à 50~Mo.
+
+\section{Conception du modèle d'IA}
+
+\subsection{Pipeline d'anonymisation en sept étapes}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{example-image}
+  \caption{Pipeline d'anonymisation en sept étapes}
+  \label{fig:pipeline}
+\end{figure}
+
+Le pipeline d'anonymisation est organisé en sept étapes séquentielles, chacune avec un rôle précis et des mécanismes de gestion des erreurs permettant une dégradation gracieuse en cas d'échec partiel.
+
+\subsubsection{Étape 1 : Classification (CLIP ViT-B/32)}
+
+Le modèle CLIP ViT-B/32 analyse l'image en mode zéro-shot à partir de prompts textuels descriptifs. Cinq catégories médicales sont définies (\textit{chest}, \textit{dental}, \textit{pelvic}, \textit{skull}, \textit{other\_medical}) plus une catégorie de rejet (\textit{non\_medical}). Le modèle retourne la catégorie de similarité cosinus maximale avec son score de confiance. Si l'image est classifiée comme non médicale ou de catégorie non supportée, le pipeline s'arrête avec un code HTTP 400.
+
+\subsubsection{Étape 2 : Validation du format}
+
+Le module \texttt{ImageValidator} vérifie la cohérence du fichier~: extension supportée, lisibilité du fichier image ou DICOM, et extraction du tableau de pixels. Pour les fichiers DICOM, cette étape tente de décompresser les données pixel en utilisant les codecs disponibles (\texttt{python-gdcm}, \texttt{pylibjpeg}).
+
+\subsubsection{Étape 3 : Anonymisation des métadonnées DICOM}
+
+Pour les fichiers DICOM uniquement, le module \texttt{MetadataAnonymizer} parcourt les tags PHI identifiés selon les listes HIPAA et les remplace par des valeurs vides ou génériques. Le nombre de tags modifiés est consigné dans le journal de l'opération.
+
+\subsubsection{Étape 4 : Prétraitement CLAHE}
+
+Le module \texttt{BorderPreprocessor} applique une amélioration de contraste CLAHE (Contrast Limited Adaptive Histogram Equalization) limitée aux zones bordurales de l'image (les \texttt{border\_pct} premiers et derniers pourcents des lignes et colonnes). Cette amélioration locale augmente le contraste du texte incrustés sans altérer la zone diagnostique centrale.
+
+\subsubsection{Étape 5 : Détection OCR double moteur}
+
+PaddleOCR PP-OCRv4 est exécuté en premier sur l'image complète prétraitée, avec le seuil de confiance paramétrable. EasyOCR est ensuite exécuté avec le même seuil sur la région bordur ale uniquement. Les deux listes de boîtes englobantes sont fusionnées par déduplication IoU~: si l'IoU entre une boîte EasyOCR et une boîte PaddleOCR dépasse 0,5, la boîte EasyOCR est considérée comme doublon et ignorée.
+
+\subsubsection{Étape 6 : Suppression des régions textuelles}
+
+Le module \texttt{PixelRedactor} applique une logique de sécurité à deux niveaux. Seules les régions situées à moins de \texttt{border\_margin} pixels des bords de l'image sont automatiquement supprimées (zone de sécurité). Les régions centrales sont journalisées mais préservées, évitant la suppression accidentelle de données diagnostiques. Pour les régions à supprimer, deux stratégies sont appliquées selon le fond détecté~:
+\begin{itemize}
+  \item \textbf{Fond sombre} (luminance moyenne $< 60$)~: remplissage par la médiane des pixels d'un bandeau de 15 pixels prélevé sur le bord le plus proche de l'image.
+  \item \textbf{Fond clair} (radiographie typique)~: reconstruction par inpainting OpenCV TELEA avec un rayon de 1 pixel, produisant un résultat visuellement naturel.
+\end{itemize}
+
+\subsubsection{Étape 7 : Sauvegarde et stockage MinIO}
+
+L'image traitée est sauvegardée dans le dossier de sortie local, puis uploadée dans MinIO via le client \texttt{MinIOStorage}. Les images sont organisées par catégorie anatomique et par date (\texttt{catégorie/YYYY/MM/DD/nomfichier}). Une URL pré-signée valable 24 heures est générée et incluse dans la réponse JSON.
+
+\subsection{Architecture du classifieur CLIP}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.85\textwidth]{example-image}
+  \caption{Architecture du classifieur CLIP zéro-shot}
+  \label{fig:clip_archi}
+\end{figure}
+
+Le modèle CLIP encode l'image en entrée et les descriptions textuelles des catégories dans un espace vectoriel commun de dimension 512. La similarité cosinus entre l'embedding de l'image et chaque embedding textuel est calculée et normalisée par softmax pour obtenir une distribution de probabilité sur les catégories.
+
+\subsection{Métriques d'évaluation du pipeline OCR}
+
+L'évaluation des performances du pipeline OCR repose sur les métriques standard de détection~: la précision (P), le rappel (R) et le F1-Score, définis comme suit~:
+
+\begin{equation}
+\text{Précision} = \frac{TP}{TP + FP}
+\label{eq:precision}
+\end{equation}
+
+\begin{equation}
+\text{Rappel} = \frac{TP}{TP + FN}
+\label{eq:recall}
+\end{equation}
+
+\begin{equation}
+\text{F1-Score} = 2 \times \frac{\text{Précision} \times \text{Rappel}}{\text{Précision} + \text{Rappel}}
+\label{eq:f1}
+\end{equation}
+
+où TP est le nombre de régions textuelles correctement détectées, FP le nombre de fausses détections, et FN le nombre de régions manquées.
+
+\section*{Conclusion}
+Ce chapitre a présenté la conception complète du système, de l'architecture en couches au pipeline d'IA. Les choix de conception reflètent un équilibre entre performance, sécurité et maintenabilité. Le chapitre suivant décrit l'implémentation concrète de chacun de ces composants avec des extraits de code significatifs.

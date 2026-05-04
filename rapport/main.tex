@@ -1,0 +1,116 @@
+% ============================================================
+%  RAPPORT PFE - ISITCOM Hammam Sousse
+%  Auteur  : Mouheb Boubrik
+%  Année   : 2025-2026
+% ============================================================
+\documentclass[12pt,a4paper]{report}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{textcomp}
+\usepackage[french]{babel}
+\usepackage[top=2.5cm, bottom=2.5cm, left=2.5cm, right=2.5cm]{geometry}
+\usepackage{setspace}
+\onehalfspacing
+\usepackage{mathptmx}
+\usepackage{microtype}
+\usepackage{graphicx}
+\usepackage[dvipsnames,table]{xcolor}
+\usepackage{float}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{multirow}
+\usepackage{colortbl}
+\usepackage{caption}
+\captionsetup{font=small,labelfont=bf}
+\usepackage{subcaption}
+\usepackage{amsmath,amssymb}
+\usepackage{listings}
+\usepackage{enumitem}
+\usepackage{url}
+
+% ---- Couleurs ----
+\definecolor{chaptercolor}{RGB}{0,70,127}
+\definecolor{codebg}{RGB}{245,245,245}
+\definecolor{codeframe}{RGB}{180,180,180}
+\definecolor{codecomment}{RGB}{100,100,100}
+\definecolor{codekeyword}{RGB}{0,0,180}
+\definecolor{codestring}{RGB}{163,21,21}
+
+% ---- Listings ----
+\lstset{
+  backgroundcolor=\color{codebg},
+  frame=single, rulecolor=\color{codeframe},
+  basicstyle=\ttfamily\footnotesize,
+  keywordstyle=\color{codekeyword}\bfseries,
+  commentstyle=\color{codecomment}\itshape,
+  stringstyle=\color{codestring},
+  breaklines=true, showstringspaces=false,
+  numbers=left, numberstyle=\tiny\color{gray},
+  numbersep=8pt, tabsize=4, captionpos=b
+}
+
+% ---- En-têtes ----
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\leftmark}
+\fancyhead[R]{\small\thepage}
+\fancyfoot[C]{\small ISITCOM --- PFE 2025--2026}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\footrulewidth}{0.4pt}
+
+% ---- Titres ----
+\usepackage{titlesec}
+\titleformat{\chapter}[display]
+  {\normalfont\huge\bfseries\color{chaptercolor}}
+  {\chaptertitlename\ \thechapter}{18pt}{\Huge}
+\titlespacing*{\chapter}{0pt}{30pt}{20pt}
+\titleformat{\section}{\normalfont\Large\bfseries\color{chaptercolor}}{\thesection}{1em}{}
+\titleformat{\subsection}{\normalfont\large\bfseries}{\thesubsection}{1em}{}
+\titleformat{\subsubsection}{\normalfont\normalsize\bfseries}{\thesubsubsection}{1em}{}
+
+% ---- Hyperliens ----
+\usepackage[colorlinks=true,linkcolor=chaptercolor,citecolor=chaptercolor,urlcolor=blue,
+  pdfauthor={Mouheb Boubrik},
+  pdftitle={Anonymisation IA d'images médicales}]{hyperref}
+
+\setcounter{secnumdepth}{4}
+\setcounter{tocdepth}{3}
+
+% ============================================================
+\begin{document}
+% ============================================================
+
+\pagenumbering{roman}
+\include{chapters/titlepage}
+\include{chapters/dedicaces}
+\include{chapters/remerciements}
+\include{chapters/resume}
+
+\tableofcontents\newpage
+\listoffigures\addcontentsline{toc}{chapter}{Liste des figures}\newpage
+\listoftables\addcontentsline{toc}{chapter}{Liste des tableaux}\newpage
+\include{chapters/abbreviations}
+
+\pagenumbering{arabic}
+\setcounter{page}{1}
+\include{chapters/intro}
+\include{chapters/chap1}
+\include{chapters/chap2}
+\include{chapters/chap3}
+\include{chapters/chap4}
+\include{chapters/chap5}
+\include{chapters/chap6}
+\include{chapters/conclusion}
+
+\bibliographystyle{plain}
+\bibliography{references}
+\addcontentsline{toc}{chapter}{Bibliographie}
+
+\appendix
+\include{chapters/annexes}
+
+\end{document}

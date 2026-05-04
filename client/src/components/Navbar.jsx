@@ -47,6 +47,9 @@ const Navbar = () => {
           <Link to="/dashboard" className={isActive('/dashboard') ? 'active' : ''}>
             Dashboard
           </Link>
+          <Link to="/pathology" className={isActive('/pathology') ? 'active' : ''}>
+            Pathology
+          </Link>
           {['utilisateur_medical', 'responsable'].includes(user?.role) && (
             <Link to="/history" className={isActive('/history') ? 'active' : ''}>
               History

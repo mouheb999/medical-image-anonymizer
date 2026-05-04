@@ -1,0 +1,35 @@
+% ============================================================
+%  INTRODUCTION GÉNÉRALE
+% ============================================================
+\chapter*{Introduction générale}
+\addcontentsline{toc}{chapter}{Introduction générale}
+\markboth{INTRODUCTION GÉNÉRALE}{INTRODUCTION GÉNÉRALE}
+
+\section*{Contexte général}
+
+La transformation numérique du secteur médical constitue l'une des mutations les plus profondes et les plus rapides de ces dernières décennies. Les établissements de santé, les centres de radiologie et les institutions de recherche médicale génèrent quotidiennement d'immenses volumes de données, parmi lesquelles les images médicales occupent une place prépondérante. Ces images, qu'il s'agisse de radiographies thoraciques, de scanners, d'imageries par résonance magnétique ou d'images dentaires et pelviennes, constituent un support irremplaçable pour le diagnostic clinique, la recherche médicale et la formation des professionnels de santé. Elles sont également des vecteurs de données personnelles sensibles directement liées à des patients identifiables, ce qui les soumet à un cadre juridique et éthique particulièrement strict.
+
+\section*{Problématique}
+
+L'anonymisation des images médicales est une obligation légale et éthique imposée par des réglementations telles que le Règlement Général sur la Protection des Données (RGPD) en Europe. Or, les informations d'identification ne se limitent pas aux métadonnées numériques des fichiers~: elles apparaissent fréquemment de manière incrustée directement dans les pixels de l'image, sous forme de texte annoté automatiquement par les équipements d'imagerie médicale. Ces annotations contiennent des données telles que le nom du patient, sa date de naissance, son identifiant, la date de l'examen ou le nom de l'établissement. L'anonymisation manuelle de ces données est un processus lent, coûteux et sujet aux erreurs humaines, inadapté aux contraintes de volume et de rapidité des services médicaux modernes. Les solutions automatiques existantes présentent, quant à elles, des limitations importantes en termes de précision, de généralisation à différents équipements ou formats d'images.
+
+\section*{Objectifs du projet}
+
+L'objectif général de ce projet est de concevoir et développer une plateforme web complète intégrant un pipeline d'intelligence artificielle pour l'anonymisation automatique et sécurisée d'images médicales, en réponse aux exigences du RGPD et aux contraintes des environnements hospitaliers.
+
+Les objectifs spécifiques sont les suivants~:
+\begin{enumerate}
+  \item Développer un moteur de classification automatique des images médicales par apprentissage zéro-shot, permettant d'identifier la catégorie anatomique de l'image avant tout traitement.
+  \item Mettre en œuvre un pipeline de détection de texte incrustés basé sur deux moteurs OCR complémentaires (PaddleOCR et EasyOCR) avec fusion et déduplication des résultats.
+  \item Implémenter un module de suppression des régions textuelles par reconstruction de fond adaptatif, préservant l'intégrité diagnostique de l'image.
+  \item Développer une application web multi-rôles sécurisée permettant l'upload, l'anonymisation et la consultation des images, avec gestion des droits d'accès basée sur les rôles (RBAC).
+  \item Assurer le stockage sécurisé des images anonymisées dans un système de stockage objet compatible S3 (MinIO), avec traçabilité complète des opérations.
+\end{enumerate}
+
+\section*{Méthodologie adoptée}
+
+La réalisation de ce projet a suivi une approche méthodologique structurée combinant les principes du développement itératif et une démarche d'ingénierie logicielle rigoureuse. Le travail a débuté par une phase d'analyse approfondie des besoins fonctionnels et non fonctionnels, suivie d'une étude comparative des technologies disponibles. Le développement a été organisé en modules indépendants mais interdépendants~: classification, détection OCR, redaction des pixels, API REST et interface utilisateur. Chaque module a fait l'objet de tests avant d'être assemblé dans le pipeline complet. L'ensemble du processus a été guidé par les exigences du RGPD et les contraintes de sécurité des données de santé.
+
+\section*{Structure du rapport}
+
+Ce rapport est organisé en six chapitres. Le premier chapitre présente le contexte médical, réglementaire et technologique, ainsi qu'un état de l'art des solutions d'anonymisation existantes. Le deuxième chapitre détaille l'analyse des besoins et la spécification fonctionnelle et technique du système. Le troisième chapitre expose la conception de l'architecture, de la base de données, de l'API REST et du modèle d'IA. Le quatrième chapitre décrit l'implémentation concrète de chaque module avec des extraits de code significatifs. Le cinquième chapitre présente la stratégie de tests et les résultats de validation. Enfin, le sixième chapitre discute les résultats obtenus, les performances du système et les perspectives d'évolution.

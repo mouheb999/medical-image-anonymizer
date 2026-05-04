@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react'
 import API from '../api/axios'
+import AdvancedSettings from './AdvancedSettings'
 
 const UploadZone = ({ onResult, onFileSelect }) => {
   const [selectedFile, setSelectedFile] = useState(null)
@@ -7,6 +8,13 @@ const UploadZone = ({ onResult, onFileSelect }) => {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const fileInputRef = useRef(null)
+  
+  const [settings, setSettings] = useState({
+    conf_threshold: 0.1,
+    padding: 5,
+    border_margin: 100,
+    border_pct: 0.20
+  })
 
   const acceptedTypes = ['.jpg', '.jpeg', '.png', '.dcm', '.dicom', '.bmp', '.tiff', '.tif']
 
@@ -62,6 +70,10 @@ const UploadZone = ({ onResult, onFileSelect }) => {
     try {
       const formData = new FormData()
       formData.append('file', selectedFile)
+      formData.append('conf_threshold', settings.conf_threshold.toString())
+      formData.append('padding', settings.padding.toString())
+      formData.append('border_margin', settings.border_margin.toString())
+      formData.append('border_pct', settings.border_pct.toString())
       
       const res = await API.post('/anonymize', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
@@ -123,6 +135,8 @@ const UploadZone = ({ onResult, onFileSelect }) => {
       </div>
       
       {error && <div className="error-message">{error}</div>}
+      
+      <AdvancedSettings settings={settings} onChange={setSettings} />
       
       <button
         onClick={handleAnonymize}

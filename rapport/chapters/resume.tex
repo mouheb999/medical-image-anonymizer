@@ -1,0 +1,50 @@
+% ============================================================
+%  RÉSUMÉ (FR / EN / AR)
+% ============================================================
+\chapter*{Résumé}
+\addcontentsline{toc}{chapter}{Résumé}
+\thispagestyle{empty}
+
+\section*{Résumé}
+
+La numérisation croissante du secteur médical génère d'immenses volumes d'images contenant des informations personnelles sensibles, soumises à des réglementations strictes telles que le Règlement Général sur la Protection des Données (RGPD). L'anonymisation manuelle de ces images est fastidieuse, sujette aux erreurs humaines et inadaptée aux contraintes de volume des établissements de santé modernes.
+
+Ce projet de fin d'études propose une solution complète et automatisée pour l'anonymisation intelligente d'images médicales, associant des techniques avancées d'intelligence artificielle à un stockage cloud sécurisé. L'architecture développée repose sur un pipeline de traitement en sept étapes intégrant la classification zéro-shot via le modèle CLIP~ViT-B/32, une détection de texte incrustée par double moteur OCR (PaddleOCR~PP-OCRv4 et EasyOCR avec fusion par IoU), et une suppression adaptative des régions textuelles par reconstruction de fond avec OpenCV TELEA.
+
+La plateforme web développée, basée sur la pile MERN (MongoDB, Express, React, Node.js) et une API REST FastAPI, offre une interface intuitive permettant aux utilisateurs médicaux d'uploader, anonymiser et consulter des images aux formats JPEG, PNG et DICOM. Un contrôle fin des paramètres du pipeline est exposé via l'interface utilisateur. Les résultats obtenus démontrent une détection fiable des informations d'identification avec un taux de succès supérieur à 93\%, tout en préservant l'intégrité diagnostique des images.
+
+La conformité RGPD est assurée par la suppression complète des métadonnées PHI des fichiers DICOM, la journalisation de toutes les opérations dans MongoDB, la gestion des droits par rôles (RBAC) et le stockage sécurisé des images dans MinIO, solution S3-compatible déployable sur site.
+
+\textbf{Mots-clés :} Intelligence Artificielle, Anonymisation, Images Médicales, DICOM, OCR, CLIP, PaddleOCR, FastAPI, MERN, RGPD, MinIO, Sécurité des Données.
+
+\vspace{0.8cm}
+\hrule
+\vspace{0.8cm}
+
+\section*{Abstract}
+
+The increasing digitization of the medical sector generates immense volumes of images containing sensitive personal information, subject to strict regulations such as the General Data Protection Regulation (GDPR). Manual anonymization of these images is tedious, error-prone and ill-suited to the volume constraints of modern healthcare institutions.
+
+This final year project proposes a complete and automated solution for the intelligent anonymization of medical images, combining advanced artificial intelligence techniques with secure cloud storage. The developed architecture is based on a seven-stage processing pipeline integrating zero-shot classification via the CLIP ViT-B/32 model, dual-engine OCR text detection (PaddleOCR PP-OCRv4 and EasyOCR with IoU-based fusion), and adaptive text region suppression by background reconstruction using OpenCV TELEA inpainting.
+
+The developed web platform, based on the MERN stack (MongoDB, Express, React, Node.js) and a FastAPI REST API, provides an intuitive interface allowing medical users to upload, anonymize and view images in JPEG, PNG and DICOM formats. Fine-grained control of pipeline parameters is exposed through the user interface. The results demonstrate reliable detection of identification information with a success rate exceeding 93\%, while preserving the diagnostic integrity of the images.
+
+GDPR compliance is ensured through complete removal of PHI metadata from DICOM files, logging of all operations in MongoDB, role-based access control (RBAC) and secure storage of images in MinIO, an on-premises deployable S3-compatible solution.
+
+\textbf{Keywords:} Artificial Intelligence, Anonymization, Medical Images, DICOM, OCR, CLIP, PaddleOCR, FastAPI, MERN, GDPR, MinIO, Data Security.
+
+\vspace{0.8cm}
+\hrule
+\vspace{0.8cm}
+
+\section*{Résumé en arabe (ملخص)}
+
+\noindent\textit{Note~: Le résumé en langue arabe est à insérer ici en utilisant un éditeur compatible (Microsoft Word, ou en ajoutant le package \texttt{polyglossia} avec la configuration de la langue arabe dans le préambule Overleaf).}
+
+\vspace{0.5cm}
+\noindent\textbf{Contenu à traduire~:} Ce projet développe une plateforme web complète pour l'anonymisation automatique d'images médicales, basée sur un pipeline IA en sept étapes intégrant CLIP~ViT-B/32 pour la classification zéro-shot, un double moteur OCR (PaddleOCR~PP-OCRv4 + EasyOCR) avec fusion IoU, et un module de suppression adaptative par inpainting OpenCV. L'application MERN sécurisée par JWT et RBAC stocke les images anonymisées dans MinIO. Le F1-Score du pipeline OCR atteint 93,4\% avec préservation complète de l'intégrité diagnostique.
+
+\vspace{0.4cm}
+\noindent\textbf{Mots-clés (AR)~:} Intelligence Artificielle, Anonymisation, Images Médicales, Apprentissage Profond, Sécurité des Données, RGPD.
+
+\newpage

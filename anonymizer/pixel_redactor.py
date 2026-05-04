@@ -229,10 +229,37 @@ class PixelRedactor:
         
         # Apply black fill first for regions on black frame
         for x_min, y_min, x_max, y_max in black_fill_regions:
-            if is_grayscale:
-                pixels[y_min:y_max, x_min:x_max] = 0
+            # Sample the actual background color from surrounding pixels
+            # instead of using pure black (0)
+            H2, W2 = pixels.shape[:2]
+            samples = []
+            
+            # Sample a 10px ring around the region
+            for sy in range(max(0, y_min - 10), min(H2, y_max + 10)):
+                for sx in [max(0, x_min - 10), min(W2 - 1, x_max + 10)]:
+                    samples.append(pixels[sy, sx])
+            for sx in range(max(0, x_min - 10), min(W2, x_max + 10)):
+                for sy in [max(0, y_min - 10), min(H2 - 1, y_max + 10)]:
+                    samples.append(pixels[sy, sx])
+            
+            # Sample the actual background color from the image edges
+            H2, W2 = pixels.shape[:2]
+            # Take a 15px strip from the nearest image edge
+            if x_min < W2 - x_max:  # closer to left edge
+                edge_strip = pixels[y_min:y_max, 0:min(15, W2)]
+            else:  # closer to right edge
+                edge_strip = pixels[y_min:y_max, max(0, W2-15):W2]
+
+            if len(pixels.shape) == 3:
+                fill = [
+                    int(np.median(edge_strip[:, :, 0])),
+                    int(np.median(edge_strip[:, :, 1])),
+                    int(np.median(edge_strip[:, :, 2]))
+                ]
             else:
-                pixels[y_min:y_max, x_min:x_max] = [0, 0, 0]
+                fill = int(np.median(edge_strip))
+
+            pixels[y_min_padded:y_max_padded, x_min_padded:x_max_padded] = fill
         
         # Perform inpainting on remaining regions
         if inpaint_regions:
@@ -253,8 +280,8 @@ class PixelRedactor:
                 for x_min, y_min, x_max, y_max in inpaint_regions:
                     mask[y_min:y_max, x_min:x_max] = 255
                 
-                # Inpaint with radius 3
-                inpainted = cv2.inpaint(pixels, mask, inpaintRadius=3, flags=cv2.INPAINT_TELEA)
+                # Inpaint with radius 1
+                inpainted = cv2.inpaint(pixels, mask, inpaintRadius=1, flags=cv2.INPAINT_TELEA)
                 
                 # Add subtle noise to match X-ray grain texture
                 noise = np.random.normal(0, 3, inpainted.shape).astype(np.int16)
@@ -275,7 +302,7 @@ class PixelRedactor:
                 inpainted_channels = []
                 for c in range(num_channels):
                     channel = pixels[:, :, c]
-                    inpainted_channel = cv2.inpaint(channel, mask, inpaintRadius=3, flags=cv2.INPAINT_TELEA)
+                    inpainted_channel = cv2.inpaint(channel, mask, inpaintRadius=1, flags=cv2.INPAINT_TELEA)
                     inpainted_channels.append(inpainted_channel)
                 
                 # Merge channels
@@ -352,7 +379,7 @@ class PixelRedactor:
         pixels: np.ndarray,
         x_min: int, y_min: int,
         x_max: int, y_max: int,
-        black_threshold: int = 15
+        black_threshold: int = 60
     ) -> bool:
         """Check if region borders the pure black frame of the X-ray."""
         H, W = pixels.shape[:2]

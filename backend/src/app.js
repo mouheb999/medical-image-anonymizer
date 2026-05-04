@@ -14,6 +14,7 @@ app.use(morgan('dev'))
 
 app.use('/api/auth', require('./routes/auth'))
 app.use('/api/anonymize', require('./routes/anonymize'))
+app.use('/api/pathology', require('./routes/pathology'))
 app.use('/api/history', require('./routes/history'))
 
 app.get('/api/health', (req, res) => {

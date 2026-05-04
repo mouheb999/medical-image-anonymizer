@@ -1,0 +1,124 @@
+% ============================================================
+%  CHAPITRE 1 : CONTEXTE ET ÉTAT DE L'ART
+% ============================================================
+\chapter{Contexte et état de l'art}
+
+\section*{Introduction}
+Ce chapitre présente le cadre général dans lequel s'inscrit ce projet de fin d'études. Il expose d'abord le contexte médical et réglementaire qui justifie la nécessité d'une solution d'anonymisation automatique des images médicales. Il dresse ensuite un état de l'art des techniques et solutions existantes, avant de présenter les technologies de stockage sécurisé dans le cloud et de positionner la contribution originale de ce projet.
+
+\section{Contexte médical et réglementaire}
+
+\subsection{L'importance des données médicales}
+
+Les données médicales constituent l'un des actifs les plus précieux et les plus sensibles de notre société numérique. Dans le domaine de l'imagerie médicale, chaque examen génère un ou plusieurs fichiers numériques contenant à la fois des informations diagnostiques de haute valeur clinique et des données à caractère personnel directement liées aux patients. Les images médicales numériques représentent une part dominante du volume total de données de santé~: une radiographie thoracique standard occupe entre 500~Ko et 2~Mo, une image IRM peut dépasser 100~Mo, et certains volumes de scanner atteignent plusieurs gigaoctets. La valeur de ces données dépasse le cadre clinique immédiat~: elles alimentent la recherche médicale, la formation des professionnels de santé, le développement de nouveaux algorithmes diagnostiques et la surveillance épidémiologique.
+
+\subsection{Les enjeux de confidentialité}
+
+La nature profondément intime des données de santé confère à leur protection un caractère prioritaire. Une image médicale n'est jamais neutre~: elle porte l'empreinte physiologique d'un individu, révèle des pathologies, des traitements en cours et des prédispositions potentielles. Les informations d'identification qui y sont souvent incrustées permettent de lier directement une image à son patient. Une fuite ou une utilisation non autorisée de ces données peut avoir des conséquences graves pour les personnes concernées~: discrimination à l'embauche ou à l'assurance, atteinte à la vie privée, exploitation malveillante des informations médicales. Ces enjeux justifient pleinement l'existence de réglementations strictes encadrant le traitement des données médicales.
+
+\subsection{Cadre réglementaire}
+
+\subsubsection{Le RGPD (Règlement Général sur la Protection des Données)}
+
+Le Règlement Général sur la Protection des Données (RGPD), entré en vigueur en mai 2018 dans l'Union Européenne, constitue le cadre réglementaire de référence en matière de protection des données à caractère personnel. Il définit les données de santé comme une catégorie particulière de données sensibles dont le traitement est soumis à des conditions strictes. Le RGPD impose notamment le principe de minimisation des données, le droit à l'effacement et le principe de protection des données dès la conception (\textit{privacy by design}). Dans le contexte de l'imagerie médicale, toute image contenant des informations permettant d'identifier un patient constitue une donnée à caractère personnel soumise aux exigences du RGPD. L'anonymisation, lorsqu'elle est effectuée de manière irréversible, permet de s'affranchir du champ d'application du règlement pour les usages secondaires tels que la recherche.
+
+\subsubsection{HIPAA (Health Insurance Portability and Accountability Act)}
+
+La loi américaine HIPAA de 1996 définit les informations de santé protégées (\textit{Protected Health Information}, PHI) et impose des obligations strictes quant à leur traitement, stockage et transmission. Bien que d'application territoriale américaine, HIPAA constitue une référence internationale en matière de sécurité des données de santé. Elle identifie dix-huit types d'identifiants à supprimer pour atteindre la désidentification sûre d'un dossier médical, dont le nom, la date de naissance, les numéros d'identification et les données géographiques. Ce projet s'inspire des exigences de HIPAA pour définir les tags PHI à anonymiser dans les fichiers DICOM.
+
+\subsubsection{Cadre réglementaire tunisien}
+
+En Tunisie, la loi organique n\textdegree~2004-63 du 27 juillet 2004 portant sur la protection des données à caractère personnel encadre le traitement des données personnelles et prévoit des dispositions spécifiques pour les données médicales. La Commission Nationale de Protection des Données (INPDP) est l'autorité de contrôle compétente pour veiller au respect de ces dispositions. Ce cadre national, combiné aux exigences du RGPD pour les projets à vocation européenne, définit les obligations auxquelles se conforme la solution développée dans ce projet.
+
+\subsection{Les risques liés aux données non anonymisées}
+
+La divulgation non maîtrisée de données médicales identifiantes expose les organisations à des risques multidimensionnels. Sur le plan juridique, les violations du RGPD peuvent entraîner des amendes pouvant atteindre 4\% du chiffre d'affaires mondial annuel ou 20 millions d'euros. Sur le plan réputationnel, les incidents de sécurité impliquant des données de santé génèrent une défiance durable des patients et des partenaires institutionnels. Sur le plan opérationnel enfin, la réidentification de patients à partir d'images non anonymisées peut compromettre des études cliniques entières et invalider des résultats de recherche.
+
+\section{État de l'art : Anonymisation d'images médicales}
+
+\subsection{Définitions et concepts fondamentaux}
+
+\subsubsection{Anonymisation vs Pseudonymisation}
+
+L'anonymisation et la pseudonymisation sont deux approches distinctes de la protection des données à caractère personnel, souvent confondues dans la pratique. La pseudonymisation consiste à remplacer les identifiants directs par des pseudonymes, permettant une réidentification ultérieure à l'aide d'une clé de correspondance conservée séparément. Elle offre une protection partielle et reste dans le champ d'application du RGPD. L'anonymisation, en revanche, est un processus irréversible visant à rendre impossible toute réidentification d'un individu à partir des données traitées. Une fois anonymisées, les données sortent du champ d'application du RGPD pour les usages secondaires. Dans le contexte des images médicales, l'anonymisation recouvre à la fois la suppression des métadonnées identifiantes dans les fichiers DICOM et l'effacement du texte incrusté (\textit{burned-in text}) directement dans les pixels de l'image.
+
+\subsubsection{Types d'informations personnelles dans les images médicales}
+
+Les images médicales numériques contiennent deux catégories principales d'informations identifiantes. La première est constituée des métadonnées structurées, présentes dans les fichiers au format DICOM sous forme de \textit{tags} standardisés~: nom du patient (0010,0010), identifiant patient (0010,0020), date de naissance (0010,0030), sexe (0010,0040), nom de l'institution (0008,0080), nom du médecin référent (0008,0090), identifiant de l'étude (0020,0010) et date de l'étude (0008,0020), entre autres. La seconde catégorie est constituée du texte incrusté dans les pixels, généré automatiquement par les équipements d'imagerie au moment de l'acquisition. Ces annotations apparaissent typiquement sur les bords des images radiologiques et contiennent nom, prénom, date de naissance, numéro de dossier, date et heure de l'examen, paramètres techniques et nom de l'établissement.
+
+\subsection{Techniques traditionnelles d'anonymisation}
+
+\subsubsection{Suppression manuelle}
+
+La méthode la plus ancienne consiste en la révision et modification manuelle des fichiers par un technicien ou un professionnel de santé formé. Cette approche est extrêmement chronophage et soumise à des taux d'erreur significatifs, particulièrement en situation de volume élevé ou de fatigue. Elle ne se prête pas à une mise à l'échelle industrielle et devient rapidement un goulot d'étranglement opérationnel dans les établissements à fort volume d'imagerie.
+
+\subsubsection{Masquage par zones prédéfinies}
+
+Une approche plus automatisée consiste à définir des zones rectangulaires fixes sur l'image, correspondant aux emplacements habituels du texte annoté par un équipement spécifique, et à masquer systématiquement ces zones. Bien que plus rapide que la suppression manuelle, cette méthode est dépendante du modèle d'équipement et ne se généralise pas d'un constructeur à l'autre. Les positions du texte varient selon les versions logicielles et les configurations locales, rendant les zones prédéfinies rapidement obsolètes.
+
+\subsubsection{Limitations des approches traditionnelles}
+
+Les approches traditionnelles partagent plusieurs limitations fondamentales~: un faible degré d'automatisation, une forte dépendance à la configuration des équipements, une incapacité à s'adapter à de nouveaux formats ou constructeurs sans reconfiguration manuelle, et une impossibilité de traiter de manière fiable les annotations positionnées de manière non standard.
+
+\subsection{Approches basées sur l'intelligence artificielle}
+
+\subsubsection{Détection de texte par OCR}
+
+La reconnaissance optique de caractères (OCR) constitue la brique fondamentale des systèmes modernes d'anonymisation d'images médicales. Les moteurs OCR sont capables de localiser et d'identifier les régions textuelles dans une image, indépendamment de la police, de la taille ou de l'orientation du texte. Tesseract OCR (Google) constitue la référence historique open-source. PaddleOCR (Baidu), basé sur l'architecture DB-Net pour la détection et SVTR/CRNN pour la reconnaissance, offre des performances supérieures sur les images médicales à fort contraste. EasyOCR, utilisant CRAFT pour la détection et CRNN pour la reconnaissance, se distingue par sa robustesse sur les textes de petite taille et les configurations non standard.
+
+\subsubsection{Modèles de classification zéro-shot}
+
+L'avènement des grands modèles de vision-langage (\textit{Vision-Language Models}) a ouvert de nouvelles perspectives pour la classification automatique d'images médicales sans données d'entraînement spécifiques. CLIP (\textit{Contrastive Language--Image Pre-training}), développé par OpenAI et publié en 2021~\cite{radford2021clip}, est entraîné sur 400 millions de paires image-texte et peut classifier des images dans des catégories arbitraires définies en langage naturel. Cette capacité de classification zéro-shot est particulièrement précieuse dans le domaine médical, où la collecte et l'annotation de larges datasets sont coûteuses et soumises à des contraintes éthiques importantes.
+
+\subsubsection{Apprentissage profond et segmentation}
+
+Les architectures CNN profondes, notamment les encodeurs ResNet et ViT, permettent d'apprendre des représentations riches des images médicales. Des architectures de segmentation sémantique comme U-Net~\cite{ronneberger2015unet}, initialement conçues pour la segmentation d'organes, ont été adaptées pour la détection de régions textuelles. Cependant, ces approches nécessitent des données d'entraînement annotées spécifiques aux équipements cibles, limitation que contournent les approches zéro-shot.
+
+\subsection{Solutions existantes : Analyse comparative}
+
+\subsubsection{Solutions commerciales}
+
+Plusieurs solutions commerciales d'anonymisation DICOM existent sur le marché. Laurel Bridge DicomEdit propose des règles configurables pour la suppression de tags PHI mais ne traite pas le texte incrusté dans les pixels. Ambra Health offre une anonymisation intégrée dans sa plateforme cloud mais à un coût prohibitif pour les institutions de taille modeste. Ces solutions restent généralement dépendantes de règles prédéfinies et nécessitent une configuration experte pour chaque nouveau type d'équipement.
+
+\subsubsection{Solutions open-source}
+
+DICOM Anonymizer Tool (DAT) et la bibliothèque Python \texttt{pydicom} permettent la suppression programmative des tags DICOM identifiants mais ne traitent pas le texte incrusté dans les pixels. Aucune solution open-source connue ne combine classification automatique du type d'image, détection par double moteur OCR et reconstruction de fond adaptatif dans un pipeline unifié accessible via une interface web.
+
+\begin{table}[H]
+\centering
+\caption{Tableau comparatif des solutions d'anonymisation d'images médicales}
+\label{tab:comparatif_solutions}
+\begin{tabularx}{\textwidth}{p{3cm} p{1.8cm} p{2cm} p{2.5cm} p{2cm} p{2cm}}
+\toprule
+\textbf{Solution} & \textbf{Tags DICOM} & \textbf{Texte incrusté} & \textbf{Classification auto} & \textbf{Open-source} & \textbf{Interface web} \\
+\midrule
+Laurel Bridge  & Oui & Non     & Non       & Non & Oui \\
+DAT/pydicom    & Oui & Non     & Non       & Oui & Non \\
+DICAT          & Oui & Partiel & Non       & Oui & Non \\
+Notre solution & Oui & Oui     & Oui (CLIP)& Oui & Oui \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Technologies de stockage sécurisé dans le cloud}
+
+\subsection{Cloud computing pour le secteur médical}
+
+Le cloud computing s'impose progressivement comme la solution de référence pour le stockage et le traitement des données médicales à grande échelle. Ses avantages sont multiples~: élasticité permettant d'adapter les ressources aux besoins sans investissement matériel lourd, haute disponibilité garantie par des architectures redondantes multi-sites, modèles de coûts à l'usage favorables aux institutions de taille variable, et facilité d'intégration avec les systèmes d'information hospitaliers existants. Cependant, la migration vers le cloud soulève des préoccupations légitimes de souveraineté des données et de conformité réglementaire.
+
+\subsection{Stockage objet compatible S3}
+
+Le stockage objet, popularisé par Amazon S3, est devenu le paradigme dominant pour le stockage de fichiers non structurés à grande échelle. Il gère les données sous forme d'objets indexés par des clés uniques dans des espaces de nommage appelés \textit{buckets}. Cette approche offre une scalabilité quasi illimitée, une durabilité très élevée (généralement 99,999999999\%) et une accessibilité universelle via des APIs HTTP standardisées.
+
+MinIO, retenu dans ce projet, est une solution de stockage objet open-source entièrement compatible avec l'API Amazon S3. Déployable sur site ou dans un environnement cloud privé, elle offre les garanties de conformité et de souveraineté des données requises par les établissements de santé, tout en conservant la compatibilité avec l'écosystème S3. Cette caractéristique permet une migration ultérieure transparente vers AWS S3 ou Azure Blob Storage si les besoins l'exigent.
+
+\subsection{Mécanismes de sécurité}
+
+La sécurisation du stockage des images médicales repose sur plusieurs mécanismes complémentaires. Le chiffrement des données en transit, assuré par TLS~1.3, protège les images lors de leur transmission. La gestion des accès par URLs pré-signées à durée limitée permet de contrôler finement qui peut accéder à quelles ressources et pendant quelle durée. La journalisation exhaustive de toutes les opérations de lecture et d'écriture assure la traçabilité requise par les réglementations.
+
+\section{Positionnement et contribution du projet}
+
+Par rapport aux solutions existantes, ce projet apporte une contribution originale à plusieurs niveaux. L'intégration d'un classifieur CLIP zéro-shot permet de rejeter automatiquement les images non médicales avant tout traitement. L'utilisation d'un double moteur OCR avec fusion par IoU améliore significativement la couverture de détection~: PaddleOCR excelle dans la détection de texte dense et structuré, tandis qu'EasyOCR, spécialisé sur les régions bordurales, complète les cas non détectés. Le module de redaction adaptatif, qui échantillonne la couleur de fond réelle depuis les bords de l'image plutôt que d'appliquer un masque noir uniforme, produit des résultats visuellement naturels. Enfin, l'interface web complète avec gestion des rôles, paramétrage dynamique du pipeline, journalisation et stockage sécurisé constitue un système prêt à l'emploi.
+
+\section*{Conclusion}
+Ce chapitre a présenté le contexte réglementaire et technologique de l'anonymisation d'images médicales, ainsi qu'un état de l'art des solutions disponibles. L'analyse comparative a mis en évidence les limites des approches existantes et justifié les choix technologiques adoptés dans ce projet. Le chapitre suivant détaille l'analyse des besoins et la spécification fonctionnelle du système.

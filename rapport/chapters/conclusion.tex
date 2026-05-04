@@ -1,0 +1,66 @@
+% ============================================================
+%  CONCLUSION GÉNÉRALE ET PERSPECTIVES
+% ============================================================
+\chapter*{Conclusion générale et perspectives}
+\addcontentsline{toc}{chapter}{Conclusion générale et perspectives}
+\markboth{CONCLUSION GÉNÉRALE ET PERSPECTIVES}{CONCLUSION GÉNÉRALE ET PERSPECTIVES}
+
+\section*{Rappel du contexte et des objectifs}
+
+Ce projet de fin d'études s'inscrit dans le contexte de la transformation numérique du secteur médical et de l'impératif croissant de protection des données personnelles de santé imposé par des réglementations telles que le RGPD. Face aux limites des approches manuelles et semi-automatiques existantes, l'objectif général était de concevoir et développer une plateforme web complète intégrant un pipeline d'intelligence artificielle pour l'anonymisation automatique et sécurisée d'images médicales.
+
+\section*{Synthèse des contributions}
+
+\subsection*{Contributions techniques}
+
+Ce projet apporte plusieurs contributions techniques originales. La première est le développement d'un pipeline d'anonymisation en sept étapes intégrant trois niveaux de traitement complémentaires~: la classification zéro-shot par CLIP~ViT-B/32, la détection de texte incrustés par double moteur OCR avec fusion IoU, et la suppression adaptative des régions textuelles par inpainting OpenCV. La deuxième contribution est la stratégie de redaction adaptative, qui échantillonne la couleur de fond réelle depuis les bords de l'image plutôt qu'un masquage uniforme, produisant des résultats visuellement naturels. La troisième contribution est l'architecture web complète en trois couches (React, Node.js/Express, FastAPI) offrant une séparation claire des responsabilités, une sécurité en profondeur et un paramétrage dynamique du pipeline depuis l'interface utilisateur.
+
+\subsection*{Contributions méthodologiques}
+
+Sur le plan méthodologique, ce projet démontre la faisabilité d'une approche zéro-shot pour la classification d'images médicales, éliminant le besoin coûteux de données d'entraînement annotées. Il établit également une méthodologie de test complète couvrant les tests unitaires, d'intégration, fonctionnels et de sécurité, applicable à des systèmes d'IA médicale similaires.
+
+\section*{Bilan du projet}
+
+\subsection*{Objectifs atteints}
+
+L'ensemble des cinq objectifs spécifiques définis en introduction ont été pleinement atteints. Le classifieur CLIP atteint un taux de classification correct supérieur à 90\%. Le pipeline OCR double moteur atteint un F1-Score de 93,4\%, avec un rappel de 93,1\% garantissant la quasi-exhaustivité des détections. Le module de redaction adaptative préserve systématiquement la zone diagnostique centrale. La plateforme web est entièrement fonctionnelle avec authentification JWT, contrôle RBAC à trois niveaux, journalisation complète et stockage sécurisé dans MinIO. L'ensemble des 65 cas de test définis ont été validés avec succès.
+
+\subsection*{Compétences acquises}
+
+La réalisation de ce projet m'a permis de développer et consolider un ensemble de compétences techniques et transversales~: maîtrise des architectures de deep learning pour la vision par ordinateur (CLIP, CNN, inpainting), développement full-stack avec la pile MERN, conception d'APIs REST performantes avec FastAPI, gestion de projets techniques en environnement professionnel avec Pura Solutions, et compréhension approfondie des enjeux de sécurité et de conformité réglementaire dans le domaine médical.
+
+\section*{Limitations et améliorations possibles}
+
+La principale limitation du système est l'absence d'accélération GPU, limitant le débit à environ 20 images par heure sur CPU. Le pipeline ne prend pas encore en charge les caractères non latins (arabe, cyrillique) ni certains codecs DICOM exotiques. L'absence de rate-limiting côté backend constitue une vulnérabilité à corriger en priorité pour un déploiement production.
+
+\section*{Perspectives et travaux futurs}
+
+\subsection*{Évolutions fonctionnelles à court terme}
+
+Les améliorations prioritaires à court terme sont~: l'ajout du rate-limiting et du throttling côté backend pour la protection contre les abus, l'implémentation d'un système de notification email lors des traitements terminés, et le support des caractères non latins dans le pipeline OCR (langues arabes et cyrilliques fréquentes dans les images médicales du Maghreb).
+
+\subsection*{Évolutions techniques à moyen terme}
+
+À moyen terme, plusieurs évolutions techniques significatives sont envisagées~:
+\begin{enumerate}
+  \item \textbf{Accélération GPU}~: L'intégration de CUDA/cuDNN pour les inférences CLIP et PaddleOCR permettrait de réduire le temps de traitement d'un facteur 5 à 10, atteignant les 200 images par heure.
+  \item \textbf{Optimisation du modèle}~: L'application de techniques de pruning et de quantization au modèle PaddleOCR réduirait son empreinte mémoire de 30 à 40\%, permettant un déploiement sur des serveurs aux ressources limitées.
+  \item \textbf{Cache Redis}~: L'implémentation d'un cache distribué pour les embeddings CLIP des images déjà classifiées réduirait la charge de classification répétée.
+  \item \textbf{Migration microservices}~: Le passage à une architecture microservices avec Docker Swarm ou Kubernetes permettrait une mise à l'échelle horizontale fine par composant.
+\end{enumerate}
+
+\subsection*{Applications futures}
+
+La solution développée ouvre la voie à plusieurs applications futures~:
+\begin{enumerate}
+  \item Extension à d'autres types d'images médicales~: pathologie anatomique, dermatologie, ophtalmologie.
+  \item Intégration directe avec les systèmes PACS (Picture Archiving and Communication System) hospitaliers via le protocole DICOM-Web.
+  \item Développement d'une application mobile pour les professionnels médicaux en déplacement.
+  \item Mise en œuvre d'un module d'apprentissage actif permettant au système d'améliorer sa précision à partir des corrections manuelles des utilisateurs.
+\end{enumerate}
+
+\section*{Mot de la fin}
+
+Ce projet de fin d'études a représenté une expérience extrêmement enrichissante, tant sur le plan technique que professionnel et humain. Il m'a permis de travailler sur un sujet à fort impact sociétal, à la confluence de l'intelligence artificielle, du développement web et de la protection des données médicales. La collaboration avec Pura Solutions et l'encadrement bienveillant de M. Mehdi Azzouzi et M. Mohamed Sbika ont été des facteurs déterminants dans la réussite de ce projet.
+
+Je suis convaincu que les technologies d'anonymisation automatique des données médicales joueront un rôle croissant dans la démocratisation de la recherche médicale et la protection de la vie privée des patients. Ce projet constitue pour moi le point de départ d'un parcours professionnel que je souhaite durablement ancré dans l'intelligence artificielle appliquée au service de la santé.

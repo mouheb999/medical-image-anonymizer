@@ -1,0 +1,451 @@
+/* ===== Pathology Detection Page ===== */
+
+.pathology-page {
+  padding: 2rem 0;
+  min-height: calc(100vh - 70px);
+}
+
+.pathology-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.pathology-header .header-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  flex-shrink: 0;
+}
+
+.pathology-header h1 {
+  font-size: 1.75rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+.pathology-header p {
+  margin: 4px 0 0;
+  opacity: 0.6;
+  font-size: 0.95rem;
+}
+
+.pathology-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+/* Upload Card */
+.pathology-upload-card,
+.pathology-results-card {
+  background: var(--card-bg, #ffffff);
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 16px;
+  padding: 1.5rem;
+}
+
+.pathology-upload-card h2,
+.pathology-results-card h2 {
+  font-size: 1.2rem;
+  font-weight: 600;
+  margin: 0 0 1rem;
+}
+
+/* Dropzone */
+.pathology-dropzone {
+  border: 2px dashed var(--border, #d1d5db);
+  border-radius: 12px;
+  padding: 2.5rem;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: var(--input-bg, #f9fafb);
+}
+
+.pathology-dropzone:hover,
+.pathology-dropzone.dragging {
+  border-color: #6366f1;
+  background: rgba(99, 102, 241, 0.04);
+}
+
+.pathology-dropzone.has-file {
+  border-style: solid;
+  border-color: #6366f1;
+}
+
+.pathology-prompt {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  color: var(--text-muted, #6b7280);
+}
+
+.pathology-prompt svg {
+  opacity: 0.4;
+}
+
+.pathology-hint {
+  font-size: 0.8rem;
+  opacity: 0.6;
+}
+
+.pathology-preview {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.pathology-preview img {
+  max-width: 320px;
+  max-height: 280px;
+  border-radius: 8px;
+  object-fit: contain;
+}
+
+.pathology-preview .filename {
+  font-weight: 600;
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.pathology-preview .filesize {
+  font-size: 0.8rem;
+  opacity: 0.5;
+  margin: 0;
+}
+
+/* Error */
+.pathology-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  background: rgba(239, 68, 68, 0.08);
+  color: #ef4444;
+  font-size: 0.9rem;
+}
+
+/* Actions */
+.pathology-actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+}
+
+.btn-detect {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0.75rem 1.5rem;
+  border: none;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: white;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-detect:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.4);
+}
+
+.btn-detect:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.btn-reset {
+  padding: 0.75rem 1.25rem;
+  border: 1px solid var(--border, #d1d5db);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text, inherit);
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-reset:hover {
+  background: var(--hover-bg, #f3f4f6);
+}
+
+/* Results Card */
+.pathology-warning {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0.85rem 1rem;
+  border-radius: 10px;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.2);
+  color: #d97706;
+  font-size: 0.88rem;
+  font-weight: 500;
+  margin-bottom: 1.25rem;
+}
+
+.pathologies-list {
+  margin-bottom: 1.5rem;
+}
+
+.pathologies-list h3,
+.heatmap-section h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0 0 0.75rem;
+}
+
+/* Individual pathology item */
+.pathology-item {
+  padding: 0.85rem 0;
+  border-bottom: 1px solid var(--border, #f0f0f0);
+}
+
+.pathology-item:last-child {
+  border-bottom: none;
+}
+
+.pathology-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.pathology-name {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.pathology-confidence-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: white;
+  padding: 2px 8px;
+  border-radius: 20px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.pathology-bar-container {
+  width: 100%;
+  height: 8px;
+  background: var(--input-bg, #f3f4f6);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+
+.pathology-bar {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.6s ease;
+}
+
+.pathology-confidence-value {
+  font-size: 0.82rem;
+  font-weight: 600;
+  opacity: 0.7;
+}
+
+/* No pathologies */
+.pathology-none {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 2rem;
+  text-align: center;
+  color: #22c55e;
+}
+
+.pathology-none p {
+  margin: 0;
+  font-size: 0.9rem;
+  opacity: 0.8;
+}
+
+/* Heatmap Section */
+.heatmap-section {
+  border-top: 1px solid var(--border, #e5e7eb);
+  padding-top: 1.25rem;
+}
+
+.heatmap-description {
+  font-size: 0.85rem;
+  opacity: 0.6;
+  margin: 0 0 1rem;
+}
+
+.heatmap-comparison {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.heatmap-image-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+  min-width: 200px;
+  max-width: 400px;
+}
+
+.heatmap-image-wrapper img {
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid var(--border, #e5e7eb);
+  object-fit: contain;
+}
+
+.heatmap-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  opacity: 0.5;
+}
+
+.heatmap-arrow {
+  opacity: 0.3;
+  flex-shrink: 0;
+}
+
+/* Bounding Box Info */
+.bbox-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  background: rgba(34, 197, 94, 0.06);
+  border: 1px solid rgba(34, 197, 94, 0.2);
+}
+
+.bbox-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 0.88rem;
+  color: #16a34a;
+}
+
+.bbox-coords {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.bbox-coords span {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 0.78rem;
+  background: var(--input-bg, #f3f4f6);
+  padding: 2px 8px;
+  border-radius: 6px;
+  opacity: 0.8;
+}
+
+/* Localization Note */
+.localization-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 0.75rem;
+  font-size: 0.82rem;
+  opacity: 0.55;
+  font-style: italic;
+}
+
+/* Primary / secondary summary block */
+.pathology-summary {
+  margin-top: 1rem;
+  padding: 0.85rem 1rem;
+  background: rgba(59, 130, 246, 0.08);
+  border-left: 3px solid #3b82f6;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+.pathology-summary p {
+  margin: 0.2rem 0;
+}
+
+/* Mandatory research-only disclaimer */
+.pathology-disclaimer {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 1.25rem;
+  padding: 0.9rem 1rem;
+  background: rgba(245, 158, 11, 0.10);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: 8px;
+  color: #92400e;
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+.pathology-disclaimer svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  stroke: #d97706;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .pathology-header {
+    flex-direction: column;
+    text-align: center;
+  }
+
+  .heatmap-comparison {
+    flex-direction: column;
+  }
+
+  .heatmap-arrow {
+    transform: rotate(90deg);
+  }
+
+  .pathology-actions {
+    flex-direction: column;
+  }
+
+  .btn-detect,
+  .btn-reset {
+    width: 100%;
+    justify-content: center;
+  }
+}

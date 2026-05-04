@@ -1,0 +1,183 @@
+% ============================================================
+%  CHAPITRE 2 : ANALYSE ET SPÉCIFICATION DES BESOINS
+% ============================================================
+\chapter{Analyse et spécification des besoins}
+
+\section*{Introduction}
+Ce chapitre présente l'analyse approfondie des besoins du système d'anonymisation d'images médicales. Il identifie les parties prenantes, décrit les besoins fonctionnels et non fonctionnels, formalise la spécification à travers des cas d'utilisation, et détaille les choix technologiques et la planification du projet.
+
+\section{Analyse des besoins}
+
+\subsection{Identification des parties prenantes}
+
+\subsubsection{Les utilisateurs finaux}
+
+Les utilisateurs finaux de la plateforme sont les professionnels médicaux qui soumettent des images à anonymiser. Ils comprennent les médecins généralistes et spécialistes, les radiologues et techniciens en imagerie médicale, et les chercheurs médicaux ayant besoin d'accéder à des images dépersonnalisées. Dans la nomenclature du système, ce profil correspond au rôle \texttt{utilisateur} (accès à ses propres images) et \texttt{utilisateur\_medical} (accès aux images de tous les utilisateurs). Ces acteurs se caractérisent par une maîtrise variable des outils informatiques et une priorité accordée à la simplicité d'utilisation et à la rapidité du traitement.
+
+\subsubsection{Les administrateurs système}
+
+Les responsables informatiques et médicaux de l'établissement constituent le profil administrateur (\texttt{responsable}) de la plateforme. Ils ont accès aux statistiques d'utilisation, à la gestion des comptes utilisateurs, à la consultation des journaux d'audit et aux paramètres système. Ce rôle est soumis à des contrôles d'accès renforcés, notamment l'obligation de fournir une clé d'enregistrement administrative lors de la création du compte.
+
+\subsubsection{L'équipe technique}
+
+Pura Solutions, en tant qu'intégrateur de la solution, constitue une partie prenante technique majeure. Les exigences de maintenabilité, de modularité du code et de documentation ont été définies en concertation avec les ingénieurs de l'entreprise, notamment M. Mohamed Sbika, encadreur professionnel de ce projet.
+
+\subsection{Étude de l'existant et problèmes identifiés}
+
+L'analyse des processus actuels d'anonymisation dans les établissements de santé révèle plusieurs problèmes récurrents. Le processus est principalement manuel et repose sur la bonne volonté et la vigilance du personnel. Il n'existe pas de traçabilité systématique des opérations effectuées. Les solutions partielles utilisées (scripts Python ad hoc, outils DICOM basiques) ne couvrent pas le texte incrusté dans les pixels. L'absence d'interface utilisateur unifiée oblige les équipes à utiliser des outils disparates, augmentant le risque d'erreurs et de pertes de données.
+
+\subsection{Besoins fonctionnels}
+
+\subsubsection{Module d'authentification et gestion des utilisateurs}
+
+Le système doit permettre l'inscription et l'authentification sécurisée des utilisateurs avec trois rôles distincts~: \texttt{utilisateur}, \texttt{utilisateur\_medical} et \texttt{responsable}. L'authentification repose sur un mécanisme JWT avec une durée de validité de 7 jours. La création d'un compte administrateur nécessite la fourniture d'une clé d'enregistrement spéciale. Le système doit permettre la récupération du profil utilisateur et la gestion des rôles par les administrateurs.
+
+\subsubsection{Module de téléchargement et traitement d'images}
+
+Le système doit accepter le téléchargement d'images aux formats JPEG, PNG, BMP, TIFF et DICOM (extensions \texttt{.dcm} et \texttt{.dicom}). La taille maximale de fichier est fixée à 50~Mo. Le fichier est stocké temporairement en mémoire, transmis au pipeline d'IA, puis le fichier temporaire est supprimé après traitement.
+
+\subsubsection{Module d'anonymisation par IA}
+
+Le cœur fonctionnel est le pipeline d'anonymisation en sept étapes~: (1) classification de l'image par CLIP, (2) validation du format, (3) anonymisation des métadonnées DICOM, (4) prétraitement CLAHE, (5) détection OCR double moteur, (6) suppression des régions textuelles, et (7) sauvegarde dans MinIO. Ce pipeline est paramétrable depuis l'interface utilisateur~: seuil de confiance OCR (\texttt{conf\_threshold}), marge de sécurité (\texttt{border\_margin}), rembourrage (\texttt{padding}) et pourcentage de scan bordural (\texttt{border\_pct}).
+
+\subsubsection{Module de stockage sécurisé}
+
+Les images anonymisées doivent être stockées dans MinIO, organisées par catégorie anatomique et par date. L'accès aux images doit se faire exclusivement par URL pré-signée à durée limitée (24 heures). Aucune image originale ne doit être persistée dans le système de stockage permanent.
+
+\subsubsection{Module de gestion et consultation}
+
+Chaque utilisateur doit pouvoir consulter l'historique de ses opérations avec les métadonnées associées (date, durée de traitement, nombre de régions détectées et supprimées, catégorie de l'image, lien de téléchargement). Les utilisateurs médicaux et administrateurs ont accès à l'historique global.
+
+\subsubsection{Module de reporting et traçabilité}
+
+Toutes les opérations doivent être journalisées en MongoDB avec~: identifiant de l'utilisateur, date et heure, résultat (succès ou échec), paramètres utilisés, statistiques de traitement et identifiant MinIO.
+
+\subsection{Besoins non fonctionnels}
+
+\subsubsection{Performances}
+
+Le temps de traitement d'une image JPEG standard (500~Ko--2~Mo) ne doit pas excéder 5 secondes sur le matériel de développement (CPU, sans GPU). Pour les fichiers DICOM volumeux, un délai pouvant atteindre 15 secondes est acceptable. L'API doit pouvoir traiter au moins 5 requêtes concurrentes sans dégradation significative.
+
+\subsubsection{Sécurité}
+
+Toutes les routes API, à l'exception de l'authentification et de l'enregistrement, doivent être protégées par JWT. La gestion des rôles doit être implémentée côté serveur. Les mots de passe doivent être hachés avec bcrypt (facteur de coût 12). Aucune donnée sensible ne doit apparaître dans les journaux applicatifs.
+
+\subsubsection{Scalabilité et déploiement}
+
+L'architecture doit permettre une mise à l'échelle horizontale par ajout de nœuds de traitement, sans modification de la logique applicative. L'utilisation de Docker et Docker Compose doit faciliter le déploiement sur différentes infrastructures.
+
+\subsubsection{Conformité réglementaire}
+
+Le système doit assurer la conformité aux exigences du RGPD~: minimisation des données (pas de stockage d'originaux), droit à l'effacement (suppression par l'administrateur), traçabilité des accès et protection des données dès la conception.
+
+\section{Spécification fonctionnelle}
+
+\subsection{Cas d'utilisation principaux}
+
+Les acteurs du système sont~: l'\textbf{Utilisateur} (médecin, technicien), l'\textbf{Utilisateur médical} (accès étendu), le \textbf{Responsable} (administrateur) et le \textbf{Système IA} (pipeline automatisé).
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.8\textwidth]{example-image}
+  \caption{Diagramme de cas d'utilisation global}
+  \label{fig:usecase}
+\end{figure}
+
+\subsubsection{CU01 : S'authentifier}
+
+\textbf{Acteur principal~:} Tout utilisateur enregistré.\\
+\textbf{Précondition~:} L'utilisateur possède un compte valide dans le système.\\
+\textbf{Scénario nominal~:} L'utilisateur accède à la page de connexion et saisit son adresse email et son mot de passe. Le système vérifie les identifiants en comparant le hash bcrypt du mot de passe fourni au hash stocké en base de données. Si les identifiants sont valides, le système génère un token JWT signé avec la clé secrète HMAC-SHA256 et l'envoie en réponse. Le client stocke le token et l'inclut dans l'en-tête \texttt{Authorization: Bearer} de chaque requête ultérieure.\\
+\textbf{Scénarios alternatifs~:} Identifiants incorrects (HTTP 401)~; compte inexistant (HTTP 401)~; token expiré (HTTP 401, redirection vers la page de connexion).\\
+\textbf{Postcondition~:} L'utilisateur est authentifié et peut accéder aux fonctionnalités correspondant à son rôle.
+
+\subsubsection{CU02 : Anonymiser une image}
+
+\textbf{Acteur principal~:} Utilisateur authentifié.\\
+\textbf{Précondition~:} L'utilisateur est connecté~; le fichier est dans un format supporté~; la taille est inférieure à 50~Mo.\\
+\textbf{Scénario nominal~:} L'utilisateur sélectionne une image depuis son poste de travail et ajuste optionnellement les paramètres du pipeline via les curseurs de l'interface. Il soumet la requête. Le backend Node.js valide le fichier et les paramètres via Multer, puis transmet l'ensemble au pipeline FastAPI sous forme de \texttt{multipart/form-data}. Le pipeline exécute les sept étapes et retourne un JSON avec les statistiques et l'URL pré-signée MinIO.\\
+\textbf{Postcondition~:} L'image anonymisée est stockée dans MinIO et l'opération est journalisée en MongoDB.
+
+\subsubsection{CU03 : Consulter l'historique}
+
+\textbf{Acteur principal~:} Tout utilisateur authentifié.\\
+\textbf{Scénario nominal~:} L'utilisateur accède au tableau de bord et consulte la liste de ses opérations, ordonnées par date décroissante, avec statistiques et lien de téléchargement.
+
+\subsubsection{CU04 : Administrer le système}
+
+\textbf{Acteur principal~:} Responsable (administrateur).\\
+\textbf{Scénario nominal~:} Le responsable consulte les statistiques globales, gère les comptes utilisateurs (modification du rôle, suppression), consulte les journaux d'audit et peut télécharger toutes les images anonymisées.
+
+\subsection{Diagramme de séquence : Processus d'anonymisation}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{example-image}
+  \caption{Diagramme de séquence du processus d'anonymisation complet}
+  \label{fig:sequence}
+\end{figure}
+
+Le diagramme ci-dessus illustre le flux complet depuis la soumission de l'image par l'utilisateur jusqu'à la réception de l'URL de téléchargement. L'interaction entre les trois couches du système (frontend React, backend Node.js, pipeline FastAPI) y est clairement représentée, ainsi que les appels vers MinIO et MongoDB.
+
+\section{Spécification technique}
+
+\subsection{Architecture générale}
+
+L'architecture du système repose sur une organisation en trois niveaux distincts et communicants~: couche présentation (React), couche applicative (Node.js/Express), et couche traitement IA (FastAPI/Python). Cette séparation garantit l'indépendance technologique, la sécurité en profondeur et la modularité.
+
+\subsection{Choix technologiques justifiés}
+
+\subsubsection{Stack MERN pour l'application web}
+
+La pile MERN (MongoDB, Express, React, Node.js) a été choisie pour sa cohérence technologique (JavaScript/JSON de bout en bout), la richesse de son écosystème npm, sa forte adoption dans l'industrie et sa compatibilité avec les compétences de l'équipe. MongoDB, en tant que base de données NoSQL orientée documents, offre la flexibilité nécessaire pour stocker des journaux d'audit aux structures évolutives.
+
+\subsubsection{FastAPI pour le pipeline IA}
+
+FastAPI a été retenu comme framework Python pour plusieurs raisons déterminantes~: performances quasi équivalentes à Node.js grâce à son architecture asynchrone (ASGI/Starlette), validation automatique des entrées via Pydantic, génération automatique de documentation OpenAPI/Swagger, et compatibilité native avec les bibliothèques de deep learning Python (PyTorch, OpenCV, PaddleOCR).
+
+\subsubsection{PaddleOCR et EasyOCR}
+
+PaddleOCR PP-OCRv4 (Baidu) et EasyOCR ont été retenus comme moteurs OCR primaire et secondaire respectivement. PaddleOCR excelle dans la détection de texte structuré et dense. EasyOCR, spécialisé sur les régions bordurales, complète efficacement les cas non détectés par le premier moteur. La fusion par IoU (seuil 0,5) élimine les doublons sans perte de couverture.
+
+\subsubsection{CLIP ViT-B/32 pour la classification}
+
+Le modèle CLIP ViT-B/32 d'OpenAI, accessible via HuggingFace Transformers, est utilisé pour la classification zéro-shot des images en cinq catégories anatomiques plus une catégorie \textit{non\_medical}, permettant le rejet automatique des images inappropriées.
+
+\subsubsection{MinIO pour le stockage objet}
+
+MinIO offre une compatibilité totale avec l'API Amazon S3, permettant un déploiement on-premises conforme aux exigences de souveraineté des données médicales. La génération d'URLs pré-signées limite l'exposition des images à des fenêtres temporelles contrôlées.
+
+\section{Planification du projet}
+
+\subsection{Découpage en phases}
+
+Le développement a été organisé en cinq phases~: (1)~analyse et étude de l'art (2 semaines), (2)~mise en place de l'architecture (1 semaine), (3)~développement du pipeline IA (3 semaines), (4)~développement de l'application web (3 semaines), et (5)~tests, intégration et documentation (2 semaines).
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{example-image}
+  \caption{Diagramme de Gantt du projet}
+  \label{fig:gantt}
+\end{figure}
+
+\subsection{Gestion des risques}
+
+\begin{table}[H]
+\centering
+\caption{Matrice des risques du projet}
+\label{tab:risques}
+\begin{tabularx}{\textwidth}{p{4cm} p{2cm} p{2cm} X}
+\toprule
+\textbf{Risque} & \textbf{Probabilité} & \textbf{Impact} & \textbf{Mesure d'atténuation} \\
+\midrule
+Incompatibilité des bibliothèques Python & Élevée & Élevé & Environnement virtuel avec versions fixées dans \texttt{requirements.txt} \\
+Performances insuffisantes de l'OCR & Moyenne & Élevé & Double moteur OCR et paramètres configurables depuis l'UI \\
+Non-conformité RGPD & Faible & Très élevé & Audit de sécurité régulier, suppression des fichiers originaux \\
+Dépendance au cloud externe & Faible & Moyen & Architecture déployable sur site avec MinIO \\
+Échec de classification CLIP & Moyenne & Moyen & Fallback manuel et journalisation des rejets \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section*{Conclusion}
+Ce chapitre a formalisé les besoins fonctionnels et non fonctionnels du système, présenté les cas d'utilisation principaux et justifié les choix technologiques. Le chapitre suivant présente la conception détaillée du système, de la base de données et des modules d'intelligence artificielle.

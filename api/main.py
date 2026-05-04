@@ -24,7 +24,7 @@ from datetime import datetime
 from dotenv import load_dotenv
 load_dotenv()
 
-from fastapi import FastAPI, File, UploadFile, HTTPException, status
+from fastapi import FastAPI, File, UploadFile, HTTPException, status, Form
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -43,7 +43,11 @@ os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 from image_classifier.improved_medical_classifier import MedicalImageClassifier
 from anonymizer import ImageValidator, ImageValidationError, MetadataAnonymizer, PixelRedactor
 from ocr import TextDetector, BorderPreprocessor, EasyTextDetector
+from services.pathology import PathologyDetector, generate_heatmap
 import numpy as np
+import base64
+import io
+import traceback
 from PIL import Image
 import pydicom
 
@@ -141,22 +145,37 @@ async def health_check():
         "services": {
             "classifier": "CLIP ready",
             "ocr": "PaddleOCR + EasyOCR",
-            "redaction": "OpenCV inpainting"
+            "redaction": "OpenCV inpainting",
+            "pathology": "TorchXRayVision DenseNet-121 (loaded)" if _pathology_detector else "TorchXRayVision DenseNet-121 (lazy)"
         }
     }
 
 
 @app.post("/anonymize")
-async def anonymize_image(file: UploadFile = File(...)):
+async def anonymize_image(
+    file: UploadFile = File(...),
+    conf_threshold: float = Form(0.1),
+    padding: int = Form(5),
+    border_margin: int = Form(100),
+    border_pct: float = Form(0.20)
+):
     """
     Anonymize a medical image using the full 7-stage pipeline.
     
     Accepts: JPEG, PNG, DICOM
+    Parameters:
+        - conf_threshold: OCR confidence threshold (0.0-1.0)
+        - padding: Redaction padding in pixels
+        - border_margin: Border safety margin in pixels
+        - border_pct: Border scan percentage for EasyOCR (0.0-1.0)
     Returns: JSON with anonymization results and output filename
     """
     import time
     import traceback
     start_time = time.time()
+    
+    logger.info(f"Parameters received: conf_threshold={conf_threshold}, padding={padding}, border_margin={border_margin}, border_pct={border_pct}")
+    print(f"[DEBUG] OCR Parameters: conf_threshold={conf_threshold}, padding={padding}, border_margin={border_margin}, border_pct={border_pct}")
     
     logger.info(f"Received anonymization request: {file.filename}")
     print(f"[DEBUG] File received: {file.filename}")
@@ -340,23 +359,23 @@ async def anonymize_image(file: UploadFile = File(...)):
         
         # === STAGE 5: Dual OCR Detection ===
         logger.info("STAGE 5: Dual OCR Detection")
-        print(f"[DEBUG] Starting PaddleOCR...")
+        print(f"[DEBUG] Starting PaddleOCR with conf_threshold={conf_threshold}...")
         stage_start = time.time()
-        paddle_detector = TextDetector(lang="en", conf_threshold=0.1)
+        paddle_detector = TextDetector(lang="en", conf_threshold=conf_threshold)
         paddle_regions = paddle_detector.detect_text(enhanced_image)
         paddle_count = len(paddle_regions)
-        print(f"[DEBUG] PaddleOCR done: {paddle_count} regions")
+        print(f"[DEBUG] PaddleOCR done: {paddle_count} regions (threshold={conf_threshold})")
         print(f"[TIMING] PaddleOCR took: {time.time() - stage_start:.2f}s")
         
         easy_regions = []
         easy_count = 0
         try:
-            print(f"[DEBUG] Starting EasyOCR...")
+            print(f"[DEBUG] Starting EasyOCR with conf_threshold={conf_threshold}, border_pct={border_pct}...")
             easy_start = time.time()
-            easy_detector = EasyTextDetector(conf_threshold=0.1, border_pct=0.20)
+            easy_detector = EasyTextDetector(conf_threshold=conf_threshold, border_pct=border_pct)
             easy_regions = easy_detector.detect_text(enhanced_image)
             easy_count = len(easy_regions)
-            print(f"[DEBUG] EasyOCR done: {easy_count} regions")
+            print(f"[DEBUG] EasyOCR done: {easy_count} regions (threshold={conf_threshold}, border_pct={border_pct})")
             print(f"[TIMING] EasyOCR took: {time.time() - easy_start:.2f}s")
         except Exception as e:
             logger.warning(f"EasyOCR failed (non-fatal): {e}")
@@ -371,23 +390,23 @@ async def anonymize_image(file: UploadFile = File(...)):
         
         # === STAGE 6: Pixel Redaction ===
         logger.info("STAGE 6: Pixel Redaction")
-        print(f"[DEBUG] Starting pixel redaction...")
+        print(f"[DEBUG] Starting pixel redaction with padding={padding}, border_margin={border_margin}...")
         stage_start = time.time()
         
-        redactor = PixelRedactor(padding=5, border_margin=100)
+        redactor = PixelRedactor(padding=padding, border_margin=border_margin)
         
         if merged_count > 0:
             if is_dicom:
                 redacted_data, redacted_count = redactor.redact(
                     dataset, merged_regions,
-                    padding=5, border_margin=100,
+                    padding=padding, border_margin=border_margin,
                     redact_all_regions=True
                 )
                 dataset = redacted_data
             else:
                 redacted_data, redacted_count = redactor.redact(
                     pixel_array, merged_regions,
-                    padding=5, border_margin=100,
+                    padding=padding, border_margin=border_margin,
                     redact_all_regions=True
                 )
                 pixel_array = redacted_data
@@ -578,6 +597,109 @@ async def get_result(filename: str):
         media_type=media_type,
         filename=filename
     )
+
+
+# ---------------------------------------------------------------------------
+# Pathology Detection — singleton (loaded once at startup)
+# ---------------------------------------------------------------------------
+_pathology_detector: Optional[PathologyDetector] = None
+
+
+def _get_pathology_detector() -> PathologyDetector:
+    """Lazy-load the pathology model on first request, then reuse."""
+    global _pathology_detector
+    if _pathology_detector is None:
+        logger.info("Loading PathologyDetector (first request)...")
+        _pathology_detector = PathologyDetector(
+            confidence_threshold=0.6,   # calibrated (op_norm) scale
+            max_results=2,              # top-1 / top-2 only for safety
+        )
+    return _pathology_detector
+
+
+@app.post("/detect-pathology")
+async def detect_pathology(file: UploadFile = File(...)):
+    """
+    Detect pathologies in a chest X-ray image.
+
+    - Validates the image is a chest X-ray using CLIP.
+    - Runs TorchXRayVision DenseNet inference.
+    - Generates a Grad-CAM heatmap (returned as base64 PNG).
+    - **Does NOT store the image or any sensitive data.**
+    """
+    temp_path = None
+    try:
+        # ---- 1. Read image bytes & save to temp file -------------------
+        contents = await file.read()
+        suffix = Path(file.filename).suffix if file.filename else ".jpg"
+        temp_path = TEMP_DIR / f"pathology_{datetime.now().strftime('%Y%m%d%H%M%S%f')}{suffix}"
+        temp_path.write_bytes(contents)
+
+        pil_image = Image.open(io.BytesIO(contents)).convert("RGB")
+        image_np = np.array(pil_image)
+
+        # ---- 2. Validate: must be a chest X-ray (CLIP) ----------------
+        classifier = MedicalImageClassifier()
+        category, confidence, metadata = classifier.classify_image(str(temp_path))
+        category_lower = category.lower()
+
+        if "chest" not in category_lower:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "status": "error",
+                    "message": "Only chest X-rays are supported",
+                },
+            )
+
+        # ---- 3. Pathology detection -----------------------------------
+        detector = _get_pathology_detector()
+        detection = detector.detect(image_np)
+
+        # ---- 4. Grad-CAM heatmap + pseudo-localization -----------------
+        model = detector.get_model()
+        image_tensor = detector._preprocess(image_np)
+        heatmap_result = generate_heatmap(
+            model=model,
+            image_tensor=image_tensor,
+            original_image=image_np,
+            target_class_idx=detection.get("top_class_idx"),
+        )
+
+        # Encode overlay image as base64 PNG
+        heatmap_pil = Image.fromarray(heatmap_result["overlay_image"])
+        buf = io.BytesIO()
+        heatmap_pil.save(buf, format="PNG")
+        heatmap_b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+
+        # ---- 5. Build response ----------------------------------------
+        return JSONResponse(
+            status_code=200,
+            content={
+                "status": "success",
+                "pathologies": detection["pathologies"],
+                "summary": detection.get("summary"),
+                "heatmap": heatmap_b64,
+                "bbox": heatmap_result["bbox"],
+                "localization_note": heatmap_result["note"],
+                "disclaimer": detection.get("disclaimer"),
+                "warning": "This is AI-assisted detection, not a medical diagnosis.",
+            },
+        )
+
+    except Exception as e:
+        logger.error("Pathology detection failed: %s", e, exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "message": str(e),
+            },
+        )
+    finally:
+        # Clean up temp file — never store patient images
+        if temp_path and temp_path.exists():
+            temp_path.unlink()
 
 
 if __name__ == "__main__":

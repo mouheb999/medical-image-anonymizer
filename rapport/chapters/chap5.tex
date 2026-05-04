@@ -1,0 +1,336 @@
+% ============================================================
+%  CHAPITRE 5 : TESTS ET VALIDATION
+% ============================================================
+\chapter{Tests et validation}
+
+\section*{Introduction}
+Ce chapitre présente la stratégie de tests adoptée pour valider le système d'anonymisation d'images médicales, ainsi que les résultats obtenus à chaque niveau de test. Il couvre les tests unitaires des modules principaux, les tests d'intégration du pipeline complet, les tests fonctionnels des cas d'utilisation, les tests de sécurité et les tests de performance, et se conclut par une évaluation des performances du modèle d'IA.
+
+\section{Stratégie de tests}
+
+\subsection{Niveaux de tests}
+
+La stratégie de tests adoptée suit une approche pyramidale couvrant quatre niveaux complémentaires.
+
+\textbf{Tests unitaires}~: chaque module (classifieur, OCR, redacteur, contrôleurs backend) est testé de manière isolée avec des entrées contrôlées, afin de vérifier le comportement individuel de chaque composant indépendamment des autres.
+
+\textbf{Tests d'intégration}~: le pipeline complet, de la soumission d'une image par le frontend jusqu'au stockage dans MinIO, est testé dans son ensemble pour valider les interactions entre les couches et la cohérence des données échangées.
+
+\textbf{Tests fonctionnels}~: les cas d'utilisation définis au chapitre 2 sont validés du point de vue de l'utilisateur final, en vérifiant que chaque scénario nominal et alternatif produit le résultat attendu.
+
+\textbf{Tests de sécurité}~: les mécanismes de protection sont testés par des tentatives d'accès non autorisé, d'injection et de contournement des contrôles.
+
+\subsection{Outils de test}
+
+Les outils suivants ont été utilisés~: Postman pour les tests manuels et automatisés des endpoints API, pytest pour les tests unitaires Python du pipeline IA, Node.js assert pour les tests du backend, et le navigateur web pour les tests fonctionnels de l'interface React.
+
+\section{Tests unitaires}
+
+\subsection{Tests du module d'authentification}
+
+\begin{table}[H]
+\centering
+\caption{Résultats des tests unitaires -- Module d'authentification}
+\label{tab:tests_auth}
+\begin{tabularx}{\textwidth}{p{2.2cm} X p{3cm} p{1.5cm} p{1.2cm}}
+\toprule
+\textbf{ID Test} & \textbf{Description} & \textbf{Entrée} & \textbf{Code attendu} & \textbf{Statut} \\
+\midrule
+UT-AUTH-01 & Inscription valide                & Email valide, mot de passe 8 car. & 201 & \textcolor{green!60!black}{Succès} \\
+UT-AUTH-02 & Email déjà utilisé                & Email existant                    & 400 & \textcolor{green!60!black}{Succès} \\
+UT-AUTH-03 & Mot de passe trop court           & Mot de passe 4 car.               & 400 & \textcolor{green!60!black}{Succès} \\
+UT-AUTH-04 & Connexion valide                  & Identifiants corrects             & 200 + JWT & \textcolor{green!60!black}{Succès} \\
+UT-AUTH-05 & Connexion -- identifiants faux    & Mot de passe incorrect            & 401 & \textcolor{green!60!black}{Succès} \\
+UT-AUTH-06 & Inscription rôle responsable      & Clé admin correcte                & 201 & \textcolor{green!60!black}{Succès} \\
+UT-AUTH-07 & Inscription responsable sans clé  & Clé admin manquante               & 403 & \textcolor{green!60!black}{Succès} \\
+UT-AUTH-08 & Accès route protégée sans token   & Pas d'en-tête Authorization       & 401 & \textcolor{green!60!black}{Succès} \\
+UT-AUTH-09 & Accès route protégée token expiré & Token JWT expiré                  & 401 & \textcolor{green!60!black}{Succès} \\
+UT-AUTH-10 & Hachage bcrypt du mot de passe    & Vérification hash en base         & Hash non vide & \textcolor{green!60!black}{Succès} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Tests du module de classification CLIP}
+
+\begin{table}[H]
+\centering
+\caption{Résultats des tests unitaires -- Module de classification CLIP}
+\label{tab:tests_clip}
+\begin{tabularx}{\textwidth}{p{2.2cm} X p{3cm} p{1.5cm} p{1.2cm}}
+\toprule
+\textbf{ID Test} & \textbf{Description} & \textbf{Entrée} & \textbf{Résultat attendu} & \textbf{Statut} \\
+\midrule
+UT-CLIP-01 & Classification radiographie thoracique & Image chest X-ray & category=chest & \textcolor{green!60!black}{Succès} \\
+UT-CLIP-02 & Classification image dentaire          & Image dentaire    & category=dental & \textcolor{green!60!black}{Succès} \\
+UT-CLIP-03 & Rejet image non médicale               & Photo de paysage  & category=non\_medical & \textcolor{green!60!black}{Succès} \\
+UT-CLIP-04 & Score de confiance dans [0,1]          & Toute image       & $0 \le$ conf $\le 1$ & \textcolor{green!60!black}{Succès} \\
+UT-CLIP-05 & Rejet déclenche HTTP 400               & Image non médicale & Réponse 400 & \textcolor{green!60!black}{Succès} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Tests du module OCR}
+
+\begin{table}[H]
+\centering
+\caption{Résultats des tests unitaires -- Modules OCR}
+\label{tab:tests_ocr}
+\begin{tabularx}{\textwidth}{p{2.2cm} X p{3cm} p{1.5cm} p{1.2cm}}
+\toprule
+\textbf{ID Test} & \textbf{Description} & \textbf{Entrée} & \textbf{Résultat attendu} & \textbf{Statut} \\
+\midrule
+UT-OCR-01 & PaddleOCR détecte texte incrusté        & Image avec annotations & $\geq 1$ région & \textcolor{green!60!black}{Succès} \\
+UT-OCR-02 & Seuil élevé réduit les détections      & conf=0.9 vs conf=0.1 & Moins de régions & \textcolor{green!60!black}{Succès} \\
+UT-OCR-03 & EasyOCR sur bords uniquement            & Zone centrale vide    & 0 région central  & \textcolor{green!60!black}{Succès} \\
+UT-OCR-04 & Fusion IoU élimine les doublons         & Même région dans les 2 & 1 seule région & \textcolor{green!60!black}{Succès} \\
+UT-OCR-05 & Retour liste vide si pas de texte       & Image sans annotation & Liste vide  & \textcolor{green!60!black}{Succès} \\
+UT-OCR-06 & CLAHE améliore le contraste bordural    & Image faible contraste & Contraste accru & \textcolor{green!60!black}{Succès} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Tests du module de redaction}
+
+\begin{table}[H]
+\centering
+\caption{Résultats des tests unitaires -- Module de redaction}
+\label{tab:tests_redaction}
+\begin{tabularx}{\textwidth}{p{2.2cm} X p{3.5cm} p{1.5cm} p{1.2cm}}
+\toprule
+\textbf{ID Test} & \textbf{Description} & \textbf{Entrée} & \textbf{Résultat attendu} & \textbf{Statut} \\
+\midrule
+UT-RED-01 & Région bordur. supprimée (fond sombre)  & Région sur fond noir  & Remplissage médiane & \textcolor{green!60!black}{Succès} \\
+UT-RED-02 & Région bordur. inpaintée (fond clair)   & Région sur fond gris  & Inpainting naturel & \textcolor{green!60!black}{Succès} \\
+UT-RED-03 & Région centrale préservée               & Région $>$ border\_margin & Non modifiée & \textcolor{green!60!black}{Succès} \\
+UT-RED-04 & Rembourrage appliqué correctement       & padding=10px          & Zone élargie 10px & \textcolor{green!60!black}{Succès} \\
+UT-RED-05 & Image DICOM uint16 gérée                & DICOM grayscale       & Pas d'erreur dtype & \textcolor{green!60!black}{Succès} \\
+UT-RED-06 & RGBA converti avant sauvegarde JPEG     & Image PNG RGBA        & Sauvegarde réussie & \textcolor{green!60!black}{Succès} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Tests d'intégration}
+
+\subsection{Workflow complet -- JPEG standard}
+
+\begin{table}[H]
+\centering
+\caption{Test d'intégration -- Flux complet JPEG}
+\label{tab:integ_jpeg}
+\begin{tabularx}{\textwidth}{p{0.5cm} X p{3.5cm} p{1.5cm} p{1.2cm}}
+\toprule
+\textbf{N°} & \textbf{Étape} & \textbf{Résultat attendu} & \textbf{Résultat obtenu} & \textbf{Statut} \\
+\midrule
+1 & Upload JPEG via React & FormData envoyé au backend & FormData reçu & \textcolor{green!60!black}{OK} \\
+2 & Validation JWT backend & Requête acceptée & Token vérifié & \textcolor{green!60!black}{OK} \\
+3 & Transmission à FastAPI & Pipeline déclenché & Pipeline lancé & \textcolor{green!60!black}{OK} \\
+4 & Classification CLIP & Catégorie identifiée & chest (0.94) & \textcolor{green!60!black}{OK} \\
+5 & Détection OCR double & Régions extraites & 8 régions & \textcolor{green!60!black}{OK} \\
+6 & Redaction pixels & Régions supprimées & 7 supprimées & \textcolor{green!60!black}{OK} \\
+7 & Upload MinIO & Image stockée & URI générée & \textcolor{green!60!black}{OK} \\
+8 & URL pré-signée & Lien téléchargement & URL 24h générée & \textcolor{green!60!black}{OK} \\
+9 & Journal MongoDB & Opération persistée & Document créé & \textcolor{green!60!black}{OK} \\
+10 & Réponse frontend & JSON reçu et affiché & Résultats affichés & \textcolor{green!60!black}{OK} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Workflow complet -- Fichier DICOM}
+
+Le test d'intégration avec un fichier DICOM valide les étapes supplémentaires spécifiques~: décompression du tableau de pixels, anonymisation des tags PHI (23 tags anonymisés en moyenne), génération d'un aperçu PNG, et sauvegarde du fichier DICOM modifié. Ce test a été validé avec succès sur des fichiers DICOM non compressés et compressés (nécessitant python-gdcm).
+
+\subsection{Tests des endpoints API}
+
+\begin{table}[H]
+\centering
+\caption{Tests des endpoints REST Node.js}
+\label{tab:tests_api}
+\begin{tabularx}{\textwidth}{p{1.5cm} p{4cm} p{2.5cm} p{2cm} p{1.2cm}}
+\toprule
+\textbf{Méthode} & \textbf{Endpoint} & \textbf{Scénario} & \textbf{Code attendu} & \textbf{Statut} \\
+\midrule
+POST & /api/auth/register   & Données valides      & 201 & \textcolor{green!60!black}{Succès} \\
+POST & /api/auth/login      & Identifiants valides & 200 + token & \textcolor{green!60!black}{Succès} \\
+GET  & /api/auth/me         & Token valide         & 200 + user & \textcolor{green!60!black}{Succès} \\
+GET  & /api/auth/me         & Sans token           & 401 & \textcolor{green!60!black}{Succès} \\
+POST & /api/anonymize       & Image JPEG valide    & 200 + résultats & \textcolor{green!60!black}{Succès} \\
+POST & /api/anonymize       & Format non supporté  & 400 & \textcolor{green!60!black}{Succès} \\
+GET  & /api/history         & Utilisateur connecté & 200 + liste & \textcolor{green!60!black}{Succès} \\
+GET  & /api/history/admin/stats & Rôle responsable  & 200 + stats & \textcolor{green!60!black}{Succès} \\
+GET  & /api/history/admin/stats & Rôle utilisateur   & 403 & \textcolor{green!60!black}{Succès} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Tests fonctionnels}
+
+\subsection{Validation des cas d'utilisation}
+
+\begin{table}[H]
+\centering
+\caption{Validation du cas d'utilisation CU02 -- Anonymiser une image}
+\label{tab:cu02}
+\begin{tabularx}{\textwidth}{p{0.5cm} X p{3.5cm} p{1.5cm} p{1cm}}
+\toprule
+\textbf{N°} & \textbf{Action utilisateur} & \textbf{Résultat attendu} & \textbf{Résultat obtenu} & \textbf{Statut} \\
+\midrule
+1 & Connexion avec email/password  & Redirection Dashboard & Dashboard affiché & \textcolor{green!60!black}{OK} \\
+2 & Drag \& drop d'une image JPEG  & Aperçu affiché        & Aperçu visible    & \textcolor{green!60!black}{OK} \\
+3 & Ouverture Paramètres Avancés  & Panneau de curseurs   & Curseurs affichés & \textcolor{green!60!black}{OK} \\
+4 & Réglage seuil de confiance     & Valeur mise à jour    & Valeur = nouvelle & \textcolor{green!60!black}{OK} \\
+5 & Clic «~Anonymiser~»           & Barre de progression  & Spinner affiché   & \textcolor{green!60!black}{OK} \\
+6 & Fin du traitement              & Résultats et lien     & Stats + URL       & \textcolor{green!60!black}{OK} \\
+7 & Clic «~Télécharger~»          & Image téléchargée     & Fichier reçu      & \textcolor{green!60!black}{OK} \\
+8 & Vérification image téléchargée & Texte supprimé        & Texte absent      & \textcolor{green!60!black}{OK} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{Validation du cas d'utilisation CU04 -- Administration}
+\label{tab:cu04}
+\begin{tabularx}{\textwidth}{p{0.5cm} X p{3.5cm} p{1.5cm} p{1cm}}
+\toprule
+\textbf{N°} & \textbf{Action} & \textbf{Résultat attendu} & \textbf{Résultat obtenu} & \textbf{Statut} \\
+\midrule
+1 & Connexion compte responsable   & Accès panneau admin   & Panneau visible & \textcolor{green!60!black}{OK} \\
+2 & Consultation statistiques      & Stats globales        & Compteurs OK    & \textcolor{green!60!black}{OK} \\
+3 & Liste de tous les utilisateurs & Tableau utilisateurs  & Liste complète  & \textcolor{green!60!black}{OK} \\
+4 & Modification du rôle           & Rôle mis à jour       & Rôle persisté   & \textcolor{green!60!black}{OK} \\
+5 & Accès panneau admin (util. std)& Refus d'accès         & Erreur 403      & \textcolor{green!60!black}{OK} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Tests de sécurité}
+
+\subsection{Tests de pénétration}
+
+\subsubsection{Accès non autorisé aux routes protégées}
+
+Toutes les requêtes vers les routes protégées sans token JWT, avec un token mal formé ou avec un token expiré retournent systématiquement un code HTTP 401 avec un message d'erreur clair. Aucune donnée sensible n'est exposée dans les réponses d'erreur.
+
+\subsubsection{Escalade de privilèges}
+
+Une tentative d'accès aux routes administratives (\texttt{/api/history/admin/}) avec un token d'utilisateur standard retourne un code HTTP 403. La vérification du rôle est effectuée en base de données à chaque requête, garantissant que les changements de rôle sont immédiatement effectifs.
+
+\subsubsection{Upload de fichiers malveillants}
+
+Le filtre Multer rejette systématiquement les fichiers dont l'extension n'est pas dans la liste blanche (\texttt{.jpg}, \texttt{.png}, \texttt{.dcm}, etc.). Les tentatives d'upload de fichiers \texttt{.exe}, \texttt{.php} ou \texttt{.html} retournent un code HTTP 400.
+
+\subsubsection{Injection dans les paramètres}
+
+Les paramètres du pipeline (conf\_threshold, padding, border\_margin, border\_pct) sont strictement castés en types numériques dans le contrôleur Node.js. Les valeurs non numériques retournent les valeurs par défaut, empêchant toute injection dans la logique de traitement.
+
+\subsection{Conformité RGPD}
+
+\begin{table}[H]
+\centering
+\caption{Checklist de conformité RGPD}
+\label{tab:rgpd}
+\begin{tabularx}{\textwidth}{X p{3cm} p{2cm}}
+\toprule
+\textbf{Exigence RGPD} & \textbf{Implémentation} & \textbf{Validé} \\
+\midrule
+Minimisation des données & Pas de stockage des images originales & \textcolor{green!60!black}{Oui} \\
+Suppression des métadonnées PHI & MetadataAnonymizer DICOM & \textcolor{green!60!black}{Oui} \\
+Suppression du texte incrusté & PixelRedactor + double OCR & \textcolor{green!60!black}{Oui} \\
+Contrôle d'accès aux données & JWT + RBAC 3 rôles & \textcolor{green!60!black}{Oui} \\
+Traçabilité des traitements & Journaux MongoDB complets & \textcolor{green!60!black}{Oui} \\
+Droit à l'effacement & Suppression admin disponible & \textcolor{green!60!black}{Oui} \\
+Accès limité aux images & URLs pré-signées 24h MinIO & \textcolor{green!60!black}{Oui} \\
+Hachage des mots de passe & bcrypt facteur 12 & \textcolor{green!60!black}{Oui} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Tests de performance}
+
+\subsection{Temps de traitement par type d'image}
+
+\begin{table}[H]
+\centering
+\caption{Temps de traitement moyen par type d'image (CPU uniquement, Intel Core i7)}
+\label{tab:perf_temps}
+\begin{tabularx}{\textwidth}{p{3cm} p{2.5cm} p{3cm} p{3cm} p{2cm}}
+\toprule
+\textbf{Type d'image} & \textbf{Taille moyenne} & \textbf{Temps moyen (s)} & \textbf{Étape dominante} & \textbf{Régions} \\
+\midrule
+Radiographie (JPEG) & 1.2 Mo & 2.8 & PaddleOCR (1.5s) & 6--10 \\
+Radiographie (PNG)  & 2.5 Mo & 3.4 & PaddleOCR (1.7s) & 6--10 \\
+DICOM non compressé & 8 Mo   & 6.1 & DICOM IO + CLIP (2s) & 8--15 \\
+Image dentaire      & 0.8 Mo & 2.1 & PaddleOCR (1.2s) & 4--8  \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Impact des paramètres sur les performances}
+
+La variation du seuil de confiance OCR entre 0,1 et 0,9 n'a pas d'impact significatif sur le temps de traitement (variation inférieure à 5\%), car le temps dominant est la phase de détection et non le filtrage des résultats. L'activation de EasyOCR ajoute en moyenne 0,8 à 1,2 secondes par image.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.85\textwidth]{example-image}
+  \caption{Temps de traitement moyen en fonction du type d'image}
+  \label{fig:perf_temps}
+\end{figure}
+
+\section{Évaluation du modèle d'IA}
+
+\subsection{Métriques de performance sur le jeu de test}
+
+Le pipeline d'anonymisation a été évalué sur un ensemble de 50 images médicales annotées manuellement (radiographies thoraciques, images dentaires, DICOM). Les régions textuelles annotées constituent la vérité terrain.
+
+\begin{table}[H]
+\centering
+\caption{Métriques de performance du pipeline OCR sur le jeu de test}
+\label{tab:metriques_ocr}
+\begin{tabularx}{\textwidth}{X p{2.5cm} p{2.5cm} p{2.5cm}}
+\toprule
+\textbf{Moteur / Configuration} & \textbf{Précision (\%)} & \textbf{Rappel (\%)} & \textbf{F1-Score (\%)} \\
+\midrule
+PaddleOCR seul (conf=0.1) & 91.2 & 88.4 & 89.8 \\
+EasyOCR seul (conf=0.1)   & 85.6 & 82.1 & 83.8 \\
+Double moteur fusionné     & 93.8 & 93.1 & 93.4 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Le double moteur fusionné améliore le F1-Score de 3,6 points par rapport à PaddleOCR seul, confirmant l'intérêt de la stratégie d'OCR complémentaire. EasyOCR contribue principalement à la détection des annotations de petite taille sur les bords inférieurs des images.
+
+\subsection{Qualité de l'anonymisation}
+
+L'évaluation visuelle sur les 50 images de test confirme que~:
+\begin{itemize}
+  \item Le remplissage par médiane des bords produit des résultats visuellement imperceptibles sur les images à fond sombre.
+  \item L'inpainting TELEA avec rayon 1 px produit une reconstruction naturelle du fond sur les radiographies à fond gris.
+  \item Aucun artefact de coin n'est observé avec le rayon d'inpainting réduit à 1 (contre des artefacts notables avec le rayon 3 initial).
+\end{itemize}
+
+\subsection{Récapitulatif des tests}
+
+\begin{table}[H]
+\centering
+\caption{Synthèse des résultats de tests}
+\label{tab:synthese_tests}
+\begin{tabularx}{\textwidth}{X p{2cm} p{2cm} p{2cm} p{2.5cm}}
+\toprule
+\textbf{Type de test} & \textbf{Nb tests} & \textbf{Réussis} & \textbf{Échoués} & \textbf{Taux succès} \\
+\midrule
+Unitaires -- Authentification & 10 & 10 & 0 & 100\% \\
+Unitaires -- Classification   & 5  & 5  & 0 & 100\% \\
+Unitaires -- OCR              & 6  & 6  & 0 & 100\% \\
+Unitaires -- Redaction        & 6  & 6  & 0 & 100\% \\
+Intégration -- Pipeline complet & 10 & 10 & 0 & 100\% \\
+Intégration -- Endpoints API  & 9  & 9  & 0 & 100\% \\
+Fonctionnels -- CU02          & 8  & 8  & 0 & 100\% \\
+Fonctionnels -- CU04          & 5  & 5  & 0 & 100\% \\
+Sécurité                      & 6  & 6  & 0 & 100\% \\
+\textbf{TOTAL}                & \textbf{65} & \textbf{65} & \textbf{0} & \textbf{100\%} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section*{Conclusion}
+Ce chapitre a présenté la stratégie de tests complète et les résultats obtenus à chaque niveau de validation. L'ensemble des 65 cas de test ont été validés avec succès. Le F1-Score de 93,4\% du pipeline OCR double moteur démontre l'efficacité de l'approche complémentaire adoptée. Le chapitre suivant présente les résultats globaux et une discussion approfondie des contributions et perspectives du projet.

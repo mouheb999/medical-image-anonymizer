@@ -1,0 +1,676 @@
+% ============================================================
+%  CHAPITRE 4 : IMPLÉMENTATION
+% ============================================================
+\chapter{Implémentation}
+
+\section*{Introduction}
+Ce chapitre décrit l'implémentation concrète du système d'anonymisation d'images médicales. Il présente l'environnement de développement, la structure du projet, puis détaille les extraits de code les plus significatifs de chaque module~: backend Node.js, pipeline IA FastAPI, stockage MinIO et interface React.
+
+\section{Environnement de développement}
+
+\subsection{Outils et technologies}
+
+L'environnement de développement repose sur les outils suivants~: Visual Studio Code comme éditeur principal, Git et GitHub pour la gestion de versions et la collaboration, et un environnement virtuel Python \texttt{venv} pour l'isolation des dépendances. Le développement a été réalisé sur Windows~11 avec Node.js~v22.20.0, Python~3.10, MongoDB~8.0 local, et MinIO déployé via Docker.
+
+\subsection{Structure complète du projet}
+
+\begin{lstlisting}[language=bash, caption={Arborescence du projet PFE\_Test}, label={lst:structure}]
+PFE_Test/
+|-- api/                        # Pipeline IA FastAPI
+|   |-- main.py                 # Point d'entree + 7 etapes du pipeline
+|   |-- config.py               # Configuration MinIO (Pydantic Settings)
+|   +-- storage.py              # Client MinIO S3-compatible
+|-- anonymizer/                 # Modules d'anonymisation
+|   |-- pixel_redactor.py       # Redaction adaptative OpenCV TELEA
+|   |-- metadata_anonymizer.py  # Suppression des tags DICOM PHI
+|   |-- image_validator.py      # Validation format + extraction pixels
+|   +-- dicom_decompressor.py   # Decompression DICOM (gdcm/pylibjpeg)
+|-- ocr/                        # Moteurs OCR
+|   |-- text_detector.py        # PaddleOCR PP-OCRv4
+|   |-- easy_text_detector.py   # EasyOCR (region bordur.)
+|   +-- preprocessor.py         # CLAHE - BorderPreprocessor
+|-- image_classifier/
+|   +-- improved_medical_classifier.py  # CLIP ViT-B/32 zero-shot
+|-- backend/                    # Node.js Express API
+|   |-- src/
+|   |   |-- app.js              # Configuration Express + CORS + routes
+|   |   |-- server.js           # Point d'entree + connexion MongoDB
+|   |   |-- controllers/
+|   |   |   |-- authController.js       # Inscription, connexion, profil
+|   |   |   |-- anonymizeController.js  # Orchestration pipeline IA
+|   |   |   +-- historyController.js    # Historique + admin
+|   |   |-- middleware/
+|   |   |   |-- auth.js         # JWT protect + RBAC middlewares
+|   |   |   +-- upload.js       # Multer memoryStorage
+|   |   |-- models/
+|   |   |   |-- User.js         # Schema Mongoose utilisateur
+|   |   |   +-- History.js      # Schema Mongoose journal
+|   |   +-- routes/
+|   |       |-- auth.js
+|   |       |-- anonymize.js
+|   |       +-- history.js
+|   |-- package.json
+|   +-- .env                    # Variables d'environnement
+|-- client/                     # React + Vite
+|   +-- src/
+|       |-- App.jsx             # Router + AuthContext provider
+|       |-- pages/
+|       |   |-- Login.jsx       # Page connexion/inscription
+|       |   |-- Dashboard.jsx   # Tableau de bord principal
+|       |   +-- AdminPanel.jsx  # Panneau administrateur
+|       |-- components/
+|       |   |-- UploadZone.jsx  # Zone upload + paramètres avancés
+|       |   |-- AdvancedSettings.jsx  # Curseurs paramètres pipeline
+|       |   +-- HistoryList.jsx # Historique des operations
+|       +-- context/
+|           +-- AuthContext.jsx # Contexte auth global
+|-- requirements.txt            # Dependances Python fixees
+|-- docker-compose.yml          # MinIO + services conteneurises
++-- .gitignore
+\end{lstlisting}
+
+\section{Implémentation du backend Node.js}
+
+\subsection{Configuration de l'application Express}
+
+\begin{lstlisting}[language=JavaScript, caption={Configuration principale de l'application Express (app.js)}, label={lst:express}]
+// backend/src/app.js
+const express = require('express')
+const cors = require('cors')
+const morgan = require('morgan')
+const app = express()
+
+app.use(cors({
+  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  credentials: true
+}))
+app.use(express.json({ limit: '10mb' }))
+app.use(express.urlencoded({ extended: true }))
+app.use(morgan('combined'))
+
+// Routes
+app.use('/api/auth',      require('./routes/auth'))
+app.use('/api/anonymize', require('./routes/anonymize'))
+app.use('/api/history',   require('./routes/history'))
+app.use('/api/health', (req, res) =>
+  res.json({ status: 'ok', timestamp: new Date() }))
+
+// Gestion globale des erreurs
+app.use((err, req, res, next) => {
+  console.error(err.stack)
+  res.status(500).json({ success: false, message: 'Internal Server Error' })
+})
+
+module.exports = app
+\end{lstlisting}
+
+\subsection{Module d'authentification}
+
+\subsubsection{Modèle Mongoose User}
+
+\begin{lstlisting}[language=JavaScript, caption={Modèle Mongoose User avec hachage bcrypt}, label={lst:user_model}]
+// backend/src/models/User.js
+const mongoose = require('mongoose')
+const bcrypt   = require('bcryptjs')
+
+const UserSchema = new mongoose.Schema({
+  name: {
+    type: String, required: [true, 'Nom requis'], maxlength: 50
+  },
+  email: {
+    type: String, required: true,
+    unique: true,
+    match: [/^\S+@\S+\.\S+$/, 'Email invalide']
+  },
+  password: {
+    type: String, required: true,
+    minlength: [6, 'Minimum 6 caractères'],
+    select: false   // jamais renvoyé dans les requêtes
+  },
+  role: {
+    type: String,
+    enum: ['utilisateur', 'utilisateur_medical', 'responsable'],
+    default: 'utilisateur'
+  }
+}, { timestamps: true })
+
+// Hachage automatique avant sauvegarde
+UserSchema.pre('save', async function(next) {
+  if (!this.isModified('password')) return next()
+  this.password = await bcrypt.hash(this.password, 12)
+  next()
+})
+
+UserSchema.methods.matchPassword = async function(entered) {
+  return await bcrypt.compare(entered, this.password)
+}
+
+module.exports = mongoose.model('User', UserSchema)
+\end{lstlisting}
+
+\subsubsection{Contrôleur d'authentification}
+
+\begin{lstlisting}[language=JavaScript, caption={Contrôleur d'authentification -- inscription et connexion}, label={lst:auth_ctrl}]
+// backend/src/controllers/authController.js
+const jwt  = require('jsonwebtoken')
+const User = require('../models/User')
+
+const generateToken = (id) =>
+  jwt.sign({ id }, process.env.JWT_SECRET,
+           { expiresIn: process.env.JWT_EXPIRE || '7d' })
+
+// POST /api/auth/register
+exports.register = async (req, res) => {
+  try {
+    const { name, email, password, role, adminKey } = req.body
+
+    if (role === 'responsable') {
+      if (adminKey !== process.env.ADMIN_REGISTRATION_KEY)
+        return res.status(403).json({
+          success: false, message: 'Clé admin invalide'
+        })
+    }
+    const user = await User.create({ name, email, password, role })
+    res.status(201).json({
+      success: true,
+      token: generateToken(user._id),
+      user: { id: user._id, name: user.name,
+              email: user.email, role: user.role }
+    })
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message })
+  }
+}
+
+// POST /api/auth/login
+exports.login = async (req, res) => {
+  try {
+    const { email, password } = req.body
+    const user = await User.findOne({ email }).select('+password')
+    if (!user || !(await user.matchPassword(password)))
+      return res.status(401).json({
+        success: false, message: 'Identifiants invalides'
+      })
+    res.json({
+      success: true,
+      token: generateToken(user._id),
+      user: { id: user._id, name: user.name,
+              email: user.email, role: user.role }
+    })
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message })
+  }
+}
+\end{lstlisting}
+
+\subsubsection{Middleware JWT et RBAC}
+
+\begin{lstlisting}[language=JavaScript, caption={Middleware d'authentification JWT et contrôle RBAC}, label={lst:middleware_auth}]
+// backend/src/middleware/auth.js
+const jwt  = require('jsonwebtoken')
+const User = require('../models/User')
+
+exports.protect = async (req, res, next) => {
+  try {
+    let token
+    if (req.headers.authorization?.startsWith('Bearer'))
+      token = req.headers.authorization.split(' ')[1]
+    if (!token)
+      return res.status(401).json({ success: false,
+        message: 'Non autorisé -- token manquant' })
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET)
+    req.user = await User.findById(decoded.id)
+    if (!req.user)
+      return res.status(401).json({ success: false,
+        message: 'Utilisateur introuvable' })
+    next()
+  } catch {
+    res.status(401).json({ success: false,
+      message: 'Non autorisé -- token invalide' })
+  }
+}
+
+exports.responsableOnly = (req, res, next) => {
+  if (req.user?.role !== 'responsable')
+    return res.status(403).json({ success: false,
+      message: 'Accès réservé aux responsables' })
+  next()
+}
+
+exports.medicalOrResponsable = (req, res, next) => {
+  const allowed = ['utilisateur_medical', 'responsable']
+  if (!allowed.includes(req.user?.role))
+    return res.status(403).json({ success: false,
+      message: 'Accès réservé aux utilisateurs médicaux' })
+  next()
+}
+\end{lstlisting}
+
+\subsection{Contrôleur d'anonymisation}
+
+\begin{lstlisting}[language=JavaScript, caption={Contrôleur d'anonymisation -- transmission au pipeline IA}, label={lst:anon_ctrl}]
+// backend/src/controllers/anonymizeController.js
+const axios    = require('axios')
+const FormData = require('form-data')
+const { Blob } = require('buffer')
+const History  = require('../models/History')
+
+exports.anonymizeImage = async (req, res) => {
+  const startTime = Date.now()
+  try {
+    // Extraction des paramètres du pipeline
+    const conf_threshold = parseFloat(req.body.conf_threshold) || 0.1
+    const padding        = parseInt(req.body.padding)          || 5
+    const border_margin  = parseInt(req.body.border_margin)    || 100
+    const border_pct     = parseFloat(req.body.border_pct)     || 0.20
+
+    // Construction du FormData pour FastAPI
+    const formData = new FormData()
+    const blob = new Blob([req.file.buffer],
+                          { type: req.file.mimetype })
+    formData.append('file',          blob, req.file.originalname)
+    formData.append('conf_threshold',conf_threshold.toString())
+    formData.append('padding',       padding.toString())
+    formData.append('border_margin', border_margin.toString())
+    formData.append('border_pct',    border_pct.toString())
+
+    // Appel au pipeline FastAPI
+    const response = await axios.post(
+      `${process.env.FASTAPI_URL}/anonymize`,
+      formData,
+      { headers: formData.getHeaders(), timeout: 120000 }
+    )
+    const data = response.data
+
+    // Persistance du journal
+    await History.create({
+      user: req.user._id,
+      filename: req.file.originalname,
+      status: 'success',
+      category: data.category,
+      confidence: data.confidence,
+      regionsDetected: data.regions_detected,
+      regionsRedacted: data.regions_redacted,
+      tagsAnonymized: data.tags_anonymized,
+      processingTime: Date.now() - startTime,
+      minioUri: data.minio_uri,
+      downloadUrl: data.download_url,
+      confThreshold: conf_threshold,
+      padding, borderMargin: border_margin, borderPct: border_pct
+    })
+
+    res.json({ success: true, data })
+  } catch (err) {
+    await History.create({
+      user: req.user._id,
+      filename: req.file?.originalname || 'unknown',
+      status: 'failed',
+      processingTime: Date.now() - startTime
+    })
+    res.status(500).json({ success: false, message: err.message })
+  }
+}
+\end{lstlisting}
+
+\section{Implémentation du pipeline IA (FastAPI)}
+
+\subsection{Point d'entrée FastAPI et configuration CORS}
+
+\begin{lstlisting}[language=Python, caption={Configuration FastAPI et CORS (main.py -- extrait)}, label={lst:fastapi_config}]
+# api/main.py (extrait)
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+import uvicorn, logging, numpy as np
+from datetime import datetime
+from pathlib import Path
+from PIL import Image
+
+app = FastAPI(
+    title="Medical Image Anonymization API",
+    description="7-stage AI anonymization pipeline",
+    version="2.0.0"
+)
+
+app.add_middleware(CORSMiddleware,
+    allow_origins=["http://localhost:3000",
+                   "http://localhost:3001",
+                   "http://localhost:5000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"]
+)
+
+TEMP_DIR   = Path("temp")
+OUTPUT_DIR = Path("output")
+TEMP_DIR.mkdir(exist_ok=True)
+OUTPUT_DIR.mkdir(exist_ok=True)
+logger = logging.getLogger(__name__)
+\end{lstlisting}
+
+\subsection{Classifieur CLIP zéro-shot}
+
+\begin{lstlisting}[language=Python, caption={Classifieur CLIP ViT-B/32 zéro-shot}, label={lst:clip}]
+# image_classifier/improved_medical_classifier.py (extrait)
+from transformers import CLIPProcessor, CLIPModel
+from PIL import Image
+import torch
+
+class MedicalImageClassifier:
+    CATEGORIES = {
+        "chest":        "a chest X-ray radiograph image",
+        "dental":       "a dental X-ray image",
+        "pelvic":       "a pelvic X-ray scan image",
+        "skull":        "a skull X-ray radiograph image",
+        "other_medical":"a medical scan other than chest or dental",
+        "non_medical":  "a non-medical photograph or document"
+    }
+
+    def __init__(self):
+        self.model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
+        self.processor = CLIPProcessor.from_pretrained(
+                             "openai/clip-vit-base-patch32")
+
+    def classify_image(self, image_path: str):
+        image = Image.open(image_path).convert("RGB")
+        texts = list(self.CATEGORIES.values())
+        inputs = self.processor(text=texts, images=image,
+                                return_tensors="pt", padding=True)
+        with torch.no_grad():
+            outputs = self.model(**inputs)
+        probs = outputs.logits_per_image.softmax(dim=1)[0]
+        best_idx = probs.argmax().item()
+        category = list(self.CATEGORIES.keys())[best_idx]
+        confidence = float(probs[best_idx])
+        return category, confidence, {}
+\end{lstlisting}
+
+\subsection{Préprocesseur CLAHE bordural}
+
+\begin{lstlisting}[language=Python, caption={BorderPreprocessor -- CLAHE sur les régions bordurales}, label={lst:clahe}]
+# ocr/preprocessor.py (extrait)
+import cv2, numpy as np
+
+class BorderPreprocessor:
+    def __init__(self, border_pct: float = 0.15):
+        self.border_pct = border_pct
+        self.clahe = cv2.createCLAHE(
+            clipLimit=2.0, tileGridSize=(8, 8))
+
+    def enhance(self, image: np.ndarray) -> np.ndarray:
+        """Applique CLAHE uniquement sur les bandes bordurales."""
+        H, W = image.shape[:2]
+        margin_h = max(1, int(H * self.border_pct))
+        margin_w = max(1, int(W * self.border_pct))
+        result = image.copy()
+
+        def apply_clahe(region):
+            if len(region.shape) == 3:
+                lab = cv2.cvtColor(region, cv2.COLOR_RGB2LAB)
+                lab[:,:,0] = self.clahe.apply(lab[:,:,0])
+                return cv2.cvtColor(lab, cv2.COLOR_LAB2RGB)
+            return self.clahe.apply(region)
+
+        # Appliquer sur les 4 bandes
+        for slc in [
+            (slice(0, margin_h), slice(None)),          # haut
+            (slice(H-margin_h, H), slice(None)),         # bas
+            (slice(None), slice(0, margin_w)),           # gauche
+            (slice(None), slice(W-margin_w, W))          # droite
+        ]:
+            result[slc] = apply_clahe(image[slc])
+        return result
+\end{lstlisting}
+
+\subsection{Module de redaction adaptatif}
+
+\begin{lstlisting}[language=Python, caption={PixelRedactor -- redaction adaptative avec échantillonnage de fond}, label={lst:redactor}]
+# anonymizer/pixel_redactor.py (extrait)
+import cv2, numpy as np
+
+class PixelRedactor:
+    def __init__(self, padding: int = 5, border_margin: int = 100):
+        self.padding = padding
+        self.border_margin = border_margin
+
+    def _is_on_black_frame(self, pixels, x_min, y_min, x_max, y_max,
+                           black_threshold: int = 60) -> bool:
+        H, W = pixels.shape[:2]
+        s = pixels[max(0,y_min-15):min(H,y_max+15),
+                   max(0,x_min-15):min(W,x_max+15)]
+        if len(s.shape) == 3:
+            s = s.mean(axis=2)
+        return float(np.mean(s)) < black_threshold
+
+    def _sample_edge_fill(self, pixels, x_min, y_min, x_max, y_max):
+        """Echantillonne la couleur de fond depuis le bord le plus proche."""
+        H, W = pixels.shape[:2]
+        if x_min < W - x_max:  # plus proche du bord gauche
+            strip = pixels[y_min:y_max, 0:min(15, W)]
+        else:                   # plus proche du bord droit
+            strip = pixels[y_min:y_max, max(0, W-15):W]
+        if len(pixels.shape) == 3:
+            return [int(np.median(strip[:,:,c])) for c in range(3)]
+        return int(np.median(strip))
+
+    def _redact_region(self, pixels, x_min, y_min, x_max, y_max,
+                       padding, is_grayscale):
+        H, W = pixels.shape[:2]
+        xp0 = max(0, x_min - padding)
+        yp0 = max(0, y_min - padding)
+        xp1 = min(W, x_max + padding)
+        yp1 = min(H, y_max + padding)
+
+        if self._is_on_black_frame(pixels, x_min, y_min, x_max, y_max):
+            fill = self._sample_edge_fill(pixels, x_min, y_min, x_max, y_max)
+            pixels[yp0:yp1, xp0:xp1] = fill
+        else:
+            # Inpainting TELEA rayon 1
+            mask = np.zeros(pixels.shape[:2], dtype=np.uint8)
+            mask[yp0:yp1, xp0:xp1] = 255
+            if is_grayscale:
+                pixels = cv2.inpaint(pixels, mask,
+                                     inpaintRadius=1,
+                                     flags=cv2.INPAINT_TELEA)
+            else:
+                channels = []
+                for c in range(pixels.shape[2]):
+                    ch = cv2.inpaint(pixels[:,:,c], mask,
+                                     inpaintRadius=1,
+                                     flags=cv2.INPAINT_TELEA)
+                    channels.append(ch)
+                pixels = np.stack(channels, axis=2)
+        return pixels
+\end{lstlisting}
+
+\subsection{Détection OCR double moteur avec fusion IoU}
+
+\begin{lstlisting}[language=Python, caption={Fusion des résultats PaddleOCR et EasyOCR par IoU}, label={lst:iou_fusion}]
+# api/main.py -- fonction merge_and_deduplicate (extrait)
+def merge_and_deduplicate(paddle_regions, easy_regions,
+                          iou_threshold=0.5):
+    def compute_iou(r1, r2):
+        x1 = [p[0] for p in r1]; y1 = [p[1] for p in r1]
+        x2 = [p[0] for p in r2]; y2 = [p[1] for p in r2]
+        inter_x = max(0, min(max(x1),max(x2))-max(min(x1),min(x2)))
+        inter_y = max(0, min(max(y1),max(y2))-max(min(y1),min(y2)))
+        if inter_x == 0 or inter_y == 0:
+            return 0.0
+        inter  = inter_x * inter_y
+        area1  = (max(x1)-min(x1)) * (max(y1)-min(y1))
+        area2  = (max(x2)-min(x2)) * (max(y2)-min(y2))
+        return inter / (area1 + area2 - inter)
+
+    merged = list(paddle_regions)
+    for easy in easy_regions:
+        if not any(compute_iou(easy, p) > iou_threshold
+                   for p in paddle_regions):
+            merged.append(easy)
+    return merged
+\end{lstlisting}
+
+\section{Implémentation du stockage MinIO}
+
+\begin{lstlisting}[language=Python, caption={Client MinIO -- upload et URL pré-signée}, label={lst:minio}]
+# api/storage.py (extrait)
+from minio import Minio
+from minio.error import S3Error
+from datetime import timedelta
+import os
+
+class MinIOStorage:
+    def __init__(self, endpoint, access_key, secret_key,
+                 bucket_name, secure=False):
+        self.client = Minio(endpoint, access_key=access_key,
+                            secret_key=secret_key, secure=secure)
+        self.bucket_name = bucket_name
+        self._ensure_bucket()
+
+    def _ensure_bucket(self):
+        if not self.client.bucket_exists(self.bucket_name):
+            self.client.make_bucket(self.bucket_name)
+
+    def upload_file(self, file_path: str, category: str = "other"):
+        from datetime import datetime
+        now = datetime.now()
+        filename = os.path.basename(file_path)
+        object_name = (f"{category}/{now.year}/{now.month:02d}/"
+                       f"{now.day:02d}/{filename}")
+        self.client.fput_object(
+            self.bucket_name, object_name, file_path)
+        return f"minio://{self.client._base_url.netloc}/{self.bucket_name}/{object_name}"
+
+    def get_presigned_url(self, object_name: str,
+                          expires_hours: int = 24) -> str:
+        return self.client.presigned_get_object(
+            self.bucket_name, object_name,
+            expires=timedelta(hours=expires_hours))
+\end{lstlisting}
+
+\section{Implémentation de l'interface React}
+
+\subsection{Contexte d'authentification global}
+
+\begin{lstlisting}[language=JavaScript, caption={AuthContext React -- gestion de l'état d'authentification}, label={lst:authcontext}]
+// client/src/context/AuthContext.jsx (extrait)
+import { createContext, useContext, useState } from 'react'
+import axios from 'axios'
+
+const AuthContext = createContext()
+const API = 'http://localhost:5000/api'
+
+export const AuthProvider = ({ children }) => {
+  const [user, setUser] = useState(
+    JSON.parse(localStorage.getItem('user') || 'null'))
+  const [token, setToken] = useState(
+    localStorage.getItem('token') || null)
+
+  const login = async (email, password) => {
+    const { data } = await axios.post(`${API}/auth/login`,
+                                      { email, password })
+    setUser(data.user); setToken(data.token)
+    localStorage.setItem('user', JSON.stringify(data.user))
+    localStorage.setItem('token', data.token)
+  }
+
+  const logout = () => {
+    setUser(null); setToken(null)
+    localStorage.clear()
+  }
+
+  // Intercepteur axios pour ajouter le token JWT
+  axios.defaults.headers.common['Authorization'] =
+    token ? `Bearer ${token}` : ''
+
+  return (
+    <AuthContext.Provider value={{ user, token, login, logout }}>
+      {children}
+    </AuthContext.Provider>
+  )
+}
+
+export const useAuth = () => useContext(AuthContext)
+\end{lstlisting}
+
+\subsection{Composant AdvancedSettings -- Paramètres du pipeline}
+
+\begin{lstlisting}[language=JavaScript, caption={Composant AdvancedSettings -- curseurs de paramétrage du pipeline}, label={lst:advsettings}]
+// client/src/components/AdvancedSettings.jsx (extrait)
+import React from 'react'
+
+export default function AdvancedSettings({ settings, onChange }) {
+  const params = [
+    { key: 'conf_threshold', label: 'Seuil de confiance OCR',
+      min: 0.0, max: 1.0, step: 0.05,
+      hint: 'Valeur basse = plus de détections' },
+    { key: 'padding',        label: 'Rembourrage (px)',
+      min: 0, max: 20, step: 1 },
+    { key: 'border_margin',  label: 'Marge de sécurité (px)',
+      min: 50, max: 300, step: 10 },
+    { key: 'border_pct',     label: 'Zone bordur. EasyOCR (%)',
+      min: 0.05, max: 0.50, step: 0.05 }
+  ]
+  return (
+    <div className="advanced-settings">
+      {params.map(({ key, label, min, max, step, hint }) => (
+        <div key={key} className="param-row">
+          <label>{label}: <strong>{settings[key]}</strong></label>
+          <input type="range" min={min} max={max} step={step}
+            value={settings[key]}
+            onChange={e => onChange(key,
+              step < 1 ? parseFloat(e.target.value)
+                       : parseInt(e.target.value))}
+          />
+          {hint && <span className="hint">{hint}</span>}
+        </div>
+      ))}
+    </div>
+  )
+}
+\end{lstlisting}
+
+\section{Configuration DevOps}
+
+\subsection{Variables d'environnement backend}
+
+\begin{lstlisting}[language=bash, caption={Fichier .env du backend (valeurs d'exemple)}, label={lst:env}]
+# backend/.env
+PORT=5000
+MONGO_URI=mongodb://localhost:27017/medical_anonymizer
+JWT_SECRET=votre_cle_secrete_jwt_tres_longue_et_aleatoire
+JWT_EXPIRE=7d
+FASTAPI_URL=http://localhost:8000
+ADMIN_REGISTRATION_KEY=PURA_ADMIN_2026
+FRONTEND_URL=http://localhost:3000
+MINIO_ENDPOINT=localhost:9000
+MINIO_ACCESS_KEY=minioadmin
+MINIO_SECRET_KEY=minioadmin
+MINIO_BUCKET=anonymized-images
+\end{lstlisting}
+
+\subsection{Docker Compose pour MinIO}
+
+\begin{lstlisting}[language=bash, caption={docker-compose.yml -- service MinIO}, label={lst:docker}]
+# docker-compose.yml
+version: '3.8'
+services:
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    restart: unless-stopped
+volumes:
+  minio_data:
+\end{lstlisting}
+
+\section*{Conclusion}
+Ce chapitre a présenté l'implémentation concrète de l'ensemble des modules du système. Les extraits de code illustrent les choix d'implémentation pour chaque composant~: authentification JWT, pipeline IA en sept étapes, redaction adaptative, stockage MinIO et interface React. Le chapitre suivant présente la stratégie de tests et les résultats de validation obtenus.

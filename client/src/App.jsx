@@ -10,6 +10,7 @@ import History from './pages/History'
 import Result from './pages/Result'
 import MedicalDashboard from './pages/MedicalDashboard'
 import AdminDashboard from './pages/AdminDashboard'
+import PathologyDetector from './pages/PathologyDetector'
 import RoleDashboard from './components/RoleDashboard'
 import Navbar from './components/Navbar'
 
@@ -45,6 +46,12 @@ function App() {
             <ProtectedRoute medicalOnly={true}>
               <Navbar />
               <History />
+            </ProtectedRoute>
+          } />
+          <Route path="/pathology" element={
+            <ProtectedRoute>
+              <Navbar />
+              <PathologyDetector />
             </ProtectedRoute>
           } />
           <Route path="/result/:id" element={
